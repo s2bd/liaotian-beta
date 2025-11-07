@@ -1,6 +1,15 @@
 # Liaotian 聊天
 easy-to-host social platforms for everyone
 
+- [x] Post feed and customize profiles like X/Twitter
+- [x] Messaging like Telegram/WhatsApp
+- [ ] User following/followers
+- [ ] Upload files
+- [ ] Embed links
+- [ ] Create and manage groups
+- [ ] Host audio and video calls
+
+
 ---
 
 ## 👤 Use LiaoTian itself
@@ -13,4 +22,4 @@ If you just want to create an account on **LiaoTian** (our official deployment) 
 4. Insert the environment variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` on **Vercel** according to your **Supabase** API connection system (choose App:NextJS).
 5. If all steps are correct, you should be able to see your own instance of LiaoTian ready and deployed! Have fun customizing it to your needs.
 
-[LiaoTian](https://github.com/huanmux/liaotian) is a project by [Huanmux ZiZhiZhe Co.](https://mux8.com/zzz) under [Huanmux](https://www.linkedin.com/company/huanmux).
+[LiaoTian](https://github.com/huanmux/liaotian) is a digital product brand/project by [Mux ZiZhiZhe Co.](https://mux8.com/zzz) under [HuanMux](https://www.linkedin.com/company/huanmux).

@@ -13,6 +13,10 @@ export const Messages = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const { user } = useAuth();
 
+  const goToProfile = (profileId: string) => {
+    window.dispatchEvent(new CustomEvent('navigateToProfile', { detail: profileId }));
+  };
+
   useEffect(() => {
     loadConversations();
     loadUsers();
@@ -26,11 +30,7 @@ export const Messages = () => {
         .channel(`messages:${selectedUser.id}`)
         .on(
           'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-          },
+          { event: 'INSERT', schema: 'public', table: 'messages' },
           (payload) => {
             const msg = payload.new as Message;
             if (
@@ -129,14 +129,21 @@ export const Messages = () => {
               onClick={() => { setSelectedUser(profile); setSearchQuery(''); }}
               className={`w-full p-4 flex items-center gap-3 hover:bg-gray-50 border-b border-gray-100 ${selectedUser?.id === profile.id ? 'bg-blue-50' : ''}`}
             >
-              <img
-                src={profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.username}`}
-                className="w-12 h-12 rounded-full"
-                alt="Avatar"
-              />
+              <button onClick={(e) => { e.stopPropagation(); goToProfile(profile.id); }}>
+                <img
+                  src={profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.username}`}
+                  className="w-12 h-12 rounded-full hover:opacity-80 transition"
+                  alt="Avatar"
+                />
+              </button>
               <div className="flex-1 text-left">
                 <div className="flex items-center gap-1">
-                  <span className="font-semibold text-sm">{profile.display_name}</span>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); goToProfile(profile.id); }}
+                    className="font-semibold text-sm hover:underline"
+                  >
+                    {profile.display_name}
+                  </button>
                   {profile.verified && <BadgeCheck size={14} className="text-blue-500" />}
                 </div>
                 <span className="text-gray-500 text-xs">@{profile.username}</span>
@@ -145,23 +152,32 @@ export const Messages = () => {
           ))}
         </div>
       </div>
+
       <div className="flex-1 flex flex-col bg-white">
         {selectedUser ? (
           <>
             <div className="p-4 border-b border-gray-200 flex items-center gap-3">
-              <img
-                src={selectedUser.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedUser.username}`}
-                className="w-10 h-10 rounded-full"
-                alt="Avatar"
-              />
+              <button onClick={() => goToProfile(selectedUser.id)}>
+                <img
+                  src={selectedUser.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedUser.username}`}
+                  className="w-10 h-10 rounded-full hover:opacity-80 transition"
+                  alt="Avatar"
+                />
+              </button>
               <div>
                 <div className="flex items-center gap-1">
-                  <span className="font-semibold">{selectedUser.display_name}</span>
+                  <button 
+                    onClick={() => goToProfile(selectedUser.id)}
+                    className="font-semibold hover:underline"
+                  >
+                    {selectedUser.display_name}
+                  </button>
                   {selectedUser.verified && <BadgeCheck size={16} className="text-blue-500" />}
                 </div>
                 <span className="text-gray-500 text-sm">@{selectedUser.username}</span>
               </div>
             </div>
+            {/* Messages list and input unchanged */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {messages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.sender_id === user!.id ? 'justify-end' : 'justify-start'}`}>

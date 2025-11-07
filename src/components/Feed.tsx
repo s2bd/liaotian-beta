@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase, Post } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Send, BadgeCheck } from 'lucide-react';
@@ -49,10 +49,10 @@ export const Feed = () => {
 
     const { data, error } = await supabase
       .from('posts')
-      .insert({ 
-        user_id: user!.id, 
-        content, 
-        image_url: imageUrl || null 
+      .insert({
+        user_id: user!.id,
+        content,
+        image_url: imageUrl || null
       })
       .select('*, profiles(*)')
       .single();
@@ -60,8 +60,11 @@ export const Feed = () => {
     if (data && !error) {
       setContent('');
       setImageUrl('');
-      // No need to push — realtime will add it
     }
+  };
+
+  const goToProfile = (profileId: string) => {
+    window.dispatchEvent(new CustomEvent('navigateToProfile', { detail: profileId }));
   };
 
   return (
@@ -96,22 +99,33 @@ export const Feed = () => {
       <div>
         {posts.map((post) => (
           <div key={post.id} className="border-b border-gray-200 p-4 hover:bg-gray-50 transition bg-white">
-            <div className="flex gap-3">
-              <img
-                src={post.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username}`}
-                className="w-12 h-12 rounded-full flex-shrink-0"
-                alt="Avatar"
-              />
+            <div className="flex gap-4 items-start"> {/* ← CHANGED: gap-3 → gap-4 + items-start */}
+              <button onClick={() => goToProfile(post.user_id)} className="flex-shrink-0">
+                <img
+                  src={post.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username}`}
+                  className="w-12 h-12 rounded-full hover:opacity-80 transition"
+                  alt="Avatar"
+                />
+              </button>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1 flex-wrap">
-                  <span className="font-bold">{post.profiles?.display_name}</span>
+                  <button
+                    onClick={() => goToProfile(post.user_id)}
+                    className="font-bold hover:underline"
+                  >
+                    {post.profiles?.display_name}
+                  </button>
                   {post.profiles?.verified && <BadgeCheck size={16} className="text-blue-500" />}
                   <span className="text-gray-500 text-sm">@{post.profiles?.username}</span>
                   <span className="text-gray-500 text-sm">· {new Date(post.created_at).toLocaleDateString()}</span>
                 </div>
                 <p className="mt-1 whitespace-pre-wrap break-words">{post.content}</p>
                 {post.image_url && (
-                  <img src={post.image_url} className="mt-3 rounded-2xl max-h-96 object-cover w-full" alt="Post" />
+                  <img 
+                    src={post.image_url} 
+                    className="mt-3 rounded-2xl max-h-96 object-cover w-full" 
+                    alt="Post" 
+                  />
                 )}
               </div>
             </div>

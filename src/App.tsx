@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Auth } from './components/Auth';
 import { Feed } from './components/Feed';
@@ -12,11 +12,22 @@ const Main = () => {
   const [selectedProfileId, setSelectedProfileId] = useState<string | undefined>();
   const { user, profile, loading, signOut } = useAuth();
 
+  // Listen for profile navigation from anywhere
+  useEffect(() => {
+    const handler = (e: any) => {
+      setSelectedProfileId(e.detail);
+      setView('profile');
+    };
+    window.addEventListener('navigateToProfile', handler);
+    return () => window.removeEventListener('navigateToProfile', handler);
+  }, []);
+
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (!user || !profile) return <Auth />;
 
   const handleMessageUser = (userProfile: ProfileType) => {
     setView('messages');
+    // Optionally auto-select user in Messages — advanced, not needed now
   };
 
   return (
@@ -39,9 +50,9 @@ const Main = () => {
             </button>
             <button
               onClick={() => { setView('profile'); setSelectedProfileId(undefined); }}
-              className={`p-3 rounded-full ${view === 'profile' ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
+              className={`p-3 rounded-full ${view === 'profile' && !selectedProfileId ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
             >
-              <User size={22} className={view === 'profile' ? 'text-blue-500' : ''} />
+              <User size={22} className={(view === 'profile' && !selectedProfileId) ? 'text-blue-500' : ''} />
             </button>
             <button onClick={signOut} className="p-3 rounded-full hover:bg-gray-100 text-red-500">
               <LogOut size={22} />

@@ -2,7 +2,7 @@
 easy-to-host social platforms for everyone
 
 ```
-Current version: 1.0.2
+Current version: 1.0.3
 ```
 
 - [x] Post on the feed and customize profiles like X/Twitter
@@ -10,7 +10,8 @@ Current version: 1.0.2
 - [x] User following/followers
 - [x] User profiles via url parameters (e.g. [lt.mux8.com/?liaotian](https://lt.mux8.com/?liaotian))
 - [x] Animated GIFs eligible for profile customization
-- [ ] Upload files
+- [x] Upload files (max 10 MB)
+- [x] Upload images, videos, documents (txt, pdf, doc/x)
 - [ ] Embed links
 - [ ] Create and manage groups
 - [ ] Host audio and video calls

@@ -1,7 +1,8 @@
+// src/components/Profile.tsx
 import { useEffect, useState } from 'react';
 import { supabase, Profile as ProfileType, Post } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { BadgeCheck, Edit2, Check, MessageCircle } from 'lucide-react';
+import { BadgeCheck, Edit2, Check, MessageCircle, X, UserMinus } from 'lucide-react';
 
 export const Profile = ({ userId, onMessage }: { userId?: string; onMessage?: (profile: ProfileType) => void }) => {
   const [profile, setProfile] = useState<ProfileType | null>(null);
@@ -11,11 +12,16 @@ export const Profile = ({ userId, onMessage }: { userId?: string; onMessage?: (p
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
-  const [following, setFollowing] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  const { user, profile: currentProfile } = useAuth();
 
+  const [showFollowers, setShowFollowers] = useState(false);
+  const [showFollowing, setShowFollowing] = useState(false);
+  const [followersList, setFollowersList] = useState<ProfileType[]>([]);
+  const [followingList, setFollowingList] = useState<ProfileType[]>([]);
+
+  const { user } = useAuth();
   const targetUserId = userId || user?.id;
   const isOwnProfile = targetUserId === user?.id;
 
@@ -24,12 +30,16 @@ export const Profile = ({ userId, onMessage }: { userId?: string; onMessage?: (p
       loadProfile();
       loadPosts();
       loadFollowStats();
-      if (!isOwnProfile) checkFollowing();
+      if (!isOwnProfile && user) checkFollowing();
     }
-  }, [targetUserId]);
+  }, [targetUserId, user]);
 
   const loadProfile = async () => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', targetUserId).maybeSingle();
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', targetUserId)
+      .single();
     setProfile(data);
     if (data) {
       setDisplayName(data.display_name);
@@ -49,41 +59,125 @@ export const Profile = ({ userId, onMessage }: { userId?: string; onMessage?: (p
   };
 
   const loadFollowStats = async () => {
-    const { count: followers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', targetUserId);
-    const { count: followingC } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', targetUserId);
+    const { count: followers } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('following_id', targetUserId);
+
+    const { count: followingC } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('follower_id', targetUserId);
+
     setFollowerCount(followers || 0);
     setFollowingCount(followingC || 0);
   };
 
   const checkFollowing = async () => {
+    if (!user) return;
     const { data } = await supabase
       .from('follows')
-      .select('*')
-      .eq('follower_id', user!.id)
+      .select('follower_id')
+      .eq('follower_id', user.id)
       .eq('following_id', targetUserId)
       .maybeSingle();
-    setFollowing(!!data);
+    setIsFollowing(!!data);
+  };
+
+  const loadFollowers = async () => {
+    const { data } = await supabase
+      .from('follows')
+      .select('follower:profiles!follower_id(*)')
+      .eq('following_id', targetUserId);
+    setFollowersList(data?.map((f: any) => f.follower) || []);
+  };
+
+  const loadFollowing = async () => {
+    const { data } = await supabase
+      .from('follows')
+      .select('following:profiles!following_id(*)')
+      .eq('follower_id', targetUserId);
+    setFollowingList(data?.map((f: any) => f.following) || []);
+  };
+
+  const openFollowers = async () => {
+    await loadFollowers();
+    setShowFollowers(true);
+    setShowFollowing(false);
+  };
+
+  const openFollowing = async () => {
+    await loadFollowing();
+    setShowFollowing(true);
+    setShowFollowers(false);
+  };
+
+  const closeModal = () => {
+    setShowFollowers(false);
+    setShowFollowing(false);
+  };
+
+  const toggleFollow = async () => {
+    if (!user) return;
+    if (isFollowing) {
+      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetUserId);
+    } else {
+      await supabase.from('follows').insert({ follower_id: user.id, following_id: targetUserId });
+    }
+    setIsFollowing(!isFollowing);
+    loadFollowStats();
+  };
+
+  const toggleFollowUser = async (targetId: string) => {
+    if (!user) return;
+    const { data: existing } = await supabase
+      .from('follows')
+      .select('follower_id')
+      .eq('follower_id', user.id)
+      .eq('following_id', targetId)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetId);
+    } else {
+      await supabase.from('follows').insert({ follower_id: user.id, following_id: targetId });
+    }
+
+    if (showFollowers) await loadFollowers();
+    if (showFollowing) await loadFollowing();
+    loadFollowStats();
+  };
+
+  // FIXED: Now actually removes + updates UI
+  const removeFollower = async (followerId: string) => {
+    const { error } = await supabase
+      .from('follows')
+      .delete()
+      .eq('follower_id', followerId)
+      .eq('following_id', user!.id);
+
+    if (!error) {
+      setFollowersList(prev => prev.filter(p => p.id !== followerId));
+      setFollowerCount(prev => prev - 1);
+    }
   };
 
   const updateProfile = async () => {
-    await supabase.from('profiles').update({
-      display_name: displayName,
-      bio,
-      avatar_url: avatarUrl,
-      banner_url: bannerUrl
-    }).eq('id', user!.id);
+    await supabase
+      .from('profiles')
+      .update({ display_name: displayName, bio, avatar_url: avatarUrl, banner_url: bannerUrl })
+      .eq('id', user!.id);
     setIsEditing(false);
     loadProfile();
   };
 
-  const toggleFollow = async () => {
-    if (following) {
-      await supabase.from('follows').delete().eq('follower_id', user!.id).eq('following_id', targetUserId);
-    } else {
-      await supabase.from('follows').insert({ follower_id: user!.id, following_id: targetUserId });
+  const goToProfile = async (profileId: string) => {
+    closeModal();
+    const { data } = await supabase.from('profiles').select('username').eq('id', profileId).single();
+    if (data) {
+      window.history.replaceState({}, '', `/?${data.username}`);
+      window.dispatchEvent(new CustomEvent('navigateToProfile', { detail: profileId }));
     }
-    setFollowing(!following);
-    loadFollowStats();
   };
 
   if (!profile) return <div className="text-center p-8">Loading...</div>;
@@ -91,7 +185,6 @@ export const Profile = ({ userId, onMessage }: { userId?: string; onMessage?: (p
   return (
     <div className="max-w-2xl mx-auto">
       <div className="bg-white">
-        {/* Banner */}
         <div className="relative h-48 bg-gray-300">
           {profile.banner_url ? (
             <img src={profile.banner_url} className="w-full h-full object-cover" alt="Banner" />
@@ -100,21 +193,20 @@ export const Profile = ({ userId, onMessage }: { userId?: string; onMessage?: (p
           )}
         </div>
 
-        {/* Avatar + Actions */}
         <div className="relative px-4 pb-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end -mt-16">
-            <div className="relative">
+            <button onClick={() => !isOwnProfile && goToProfile(profile.id)}>
               <img
                 src={profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.username}`}
-                className="w-32 h-32 rounded-full border-4 border-white shadow-lg ring-4 ring-white"
+                className="w-32 h-32 rounded-full border-4 border-white shadow-lg ring-4 ring-white hover:opacity-90 transition"
                 alt="Avatar"
               />
-            </div>
+            </button>
 
             <div className="mt-4 sm:mt-0 flex gap-2">
               {isOwnProfile ? (
                 <button
-                  onClick={() => isEditing ? updateProfile() : setIsEditing(true)}
+                  onClick={() => (isEditing ? updateProfile() : setIsEditing(true))}
                   className="px-5 py-2.5 border border-gray-300 rounded-full font-semibold hover:bg-gray-50 flex items-center gap-2 transition"
                 >
                   {isEditing ? <Check size={18} /> : <Edit2 size={18} />}
@@ -122,108 +214,165 @@ export const Profile = ({ userId, onMessage }: { userId?: string; onMessage?: (p
                 </button>
               ) : (
                 <>
-                  <button
-                    onClick={() => onMessage?.(profile)}
-                    className="p-2.5 border border-gray-300 rounded-full hover:bg-gray-50 transition"
-                  >
-                    <MessageCircle size={20} />
-                  </button>
+                 <button
+  onClick={() => {
+    if (!profile?.username) return;
+    
+    // 1. Set URL
+    window.history.replaceState({}, '', `/?${profile.username}`);
+    
+    // 2. Trigger BOTH: App.tsx handler + direct open in Messages
+    onMessage?.(profile);
+    window.dispatchEvent(new CustomEvent('openDirectMessage', { detail: profile }));
+  }}
+  className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 text-white rounded-full hover:bg-orange-600 transition font-medium"
+>
+  <MessageCircle size={18} />
+  Message
+</button>
                   <button
                     onClick={toggleFollow}
                     className={`px-6 py-2.5 rounded-full font-semibold transition ${
-                      following
-                        ? 'bg-white border border-gray-300 hover:bg-gray-50'
-                        : 'bg-black text-white hover:bg-gray-800'
+                      isFollowing ? 'bg-white border border-gray-300 hover:bg-gray-50' : 'bg-black text-white hover:bg-gray-800'
                     }`}
                   >
-                    {following ? 'Following' : 'Follow'}
+                    {isFollowing ? 'Following' : 'Follow'}
                   </button>
                 </>
               )}
             </div>
           </div>
 
-          {/* Profile Info */}
           {isEditing ? (
             <div className="mt-6 space-y-3">
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Display Name"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
-              />
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                placeholder="Bio"
-                rows={3}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500 resize-none"
-              />
-              <input
-                type="url"
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                placeholder="Avatar URL"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
-              />
-              <input
-                type="url"
-                value={bannerUrl}
-                onChange={(e) => setBannerUrl(e.target.value)}
-                placeholder="Banner URL"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500"
-              />
+              <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display Name" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500" />
+              <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Bio" rows={3} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500 resize-none" />
+              <input type="url" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="Avatar URL" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500" />
+              <input type="url" value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} placeholder="Banner URL" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500" />
             </div>
           ) : (
             <div className="mt-5">
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold">{profile.display_name}</h1>
+                <button onClick={() => !isOwnProfile && goToProfile(profile.id)} className="font-bold text-2xl hover:underline">
+                  {profile.display_name}
+                </button>
                 {profile.verified && <BadgeCheck size={22} className="text-orange-500" />}
               </div>
               <p className="text-gray-500">@{profile.username}</p>
               {profile.bio && <p className="mt-3 text-gray-800">{profile.bio}</p>}
-              <div className="mt-4 flex gap-6 text-sm">
-                <div>
-                  <strong className="text-lg">{followingCount}</strong>{' '}
-                  <span className="text-gray-500">Following</span>
-                </div>
-                <div>
-                  <strong className="text-lg">{followerCount}</strong>{' '}
-                  <span className="text-gray-500">Followers</span>
-                </div>
+              <div className="mt-4 flex gap-8 text-sm">
+                <button onClick={openFollowing} className="hover:underline">
+                  <strong className="text-lg">{followingCount}</strong> <span className="text-gray-500">Following</span>
+                </button>
+                <button onClick={openFollowers} className="hover:underline">
+                  <strong className="text-lg">{followerCount}</strong> <span className="text-gray-500">Followers</span>
+                </button>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Posts */}
       <div>
         {posts.map((post) => (
-          <div key={post.id} className="border-b border-gray-200 p-4 hover:bg-gray-50 bg-white">
-            <div className="flex gap-3">
-              <img
-                src={profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.username}`}
-                className="w-12 h-12 rounded-full"
-                alt="Avatar"
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold">{profile.display_name}</span>
-                  {profile.verified && <BadgeCheck size={16} className="text-orange-500" />}
-                  <span className="text-gray-500 text-sm">@{profile.username}</span>
-                  <span className="text-gray-500 text-sm">· {new Date(post.created_at).toLocaleDateString()}</span>
-                </div>
-                <p className="mt-1 whitespace-pre-wrap">{post.content}</p>
-                {post.image_url && (
-                  <img src={post.image_url} className="mt-2 rounded-2xl max-h-96 object-cover" alt="Post" />
-                )}
-              </div>
+  <div key={post.id} className="border-b border-gray-200 p-4 hover:bg-gray-50 transition bg-white">
+    <div className="flex gap-4 items-start">
+      <button onClick={() => goToProfile(post.user_id)} className="flex-shrink-0">
+        <img
+          src={post.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username}`}
+          className="w-12 h-12 rounded-full hover:opacity-80 transition"
+          alt="Avatar"
+        />
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1 flex-wrap">
+          <button onClick={() => goToProfile(post.user_id)} className="font-bold hover:underline">
+            {post.profiles?.display_name}
+          </button>
+          {post.profiles?.verified && <BadgeCheck size={16} className="text-orange-500" />}
+          <span className="text-gray-500 text-sm">@{post.profiles?.username}</span>
+          <span className="text-gray-500 text-sm">
+            · {new Date(post.created_at).toLocaleDateString()}
+          </span>
+        </div>
+        <p className="mt-1 whitespace-pre-wrap break-words">{post.content}</p>
+        {post.image_url && (
+          <img
+            src={post.image_url}
+            className="mt-3 rounded-2xl max-h-96 object-cover w-full"
+            alt="Post"
+          />
+        )}
+      </div>
+    </div>
+  </div>
+))}
+      </div>
+
+      {(showFollowers || showFollowing) && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeModal}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="font-bold text-lg">{showFollowers ? 'Followers' : 'Following'}</h3>
+              <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-full">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {(showFollowers ? followersList : followingList).map((p) => {
+                const isFollowingThisUser = followingList.some(f => f.id === p.id);
+                const isMe = p.id === user?.id;
+
+                return (
+                  <div key={p.id} className="flex items-center justify-between p-4 hover:bg-gray-50 border-b">
+                    <button onClick={() => goToProfile(p.id)} className="flex items-center gap-3 flex-1 text-left">
+                      <img
+                        src={p.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.username}`}
+                        className="w-10 h-10 rounded-full"
+                        alt=""
+                      />
+                      <div>
+                        <div className="font-semibold">{p.display_name}</div>
+                        <div className="text-sm text-gray-500">@{p.username}</div>
+                      </div>
+                    </button>
+
+                    {isOwnProfile && !isMe && (
+                      <div className="flex gap-2">
+                        {showFollowers && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFollower(p.id);
+                            }}
+                            className="px-3 py-1.5 text-sm font-medium rounded-full border border-red-300 text-red-600 hover:bg-red-50 transition"
+                          >
+                            <UserMinus size={16} className="inline mr-1" />
+                            Remove
+                          </button>
+                        )}
+                        {showFollowing && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFollowUser(p.id);
+                            }}
+                            className={`px-4 py-1.5 text-sm font-medium rounded-full border transition ${
+                              isFollowingThisUser ? 'border-gray-300 hover:bg-gray-50' : 'bg-black text-white hover:bg-gray-800'
+                            }`}
+                          >
+                            {isFollowingThisUser ? 'Following' : 'Follow'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

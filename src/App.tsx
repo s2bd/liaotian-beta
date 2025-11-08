@@ -4,12 +4,14 @@ import { Auth } from './components/Auth';
 import { Feed } from './components/Feed';
 import { Messages } from './components/Messages';
 import { Profile } from './components/Profile';
-import { Home, MessageSquare, User, LogOut } from 'lucide-react';
+import { Search } from './components/Search';
+import { Home, MessageSquare, User, LogOut, Search as SearchIcon } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 const Main = () => {
   const [view, setView] = useState<'feed' | 'messages' | 'profile'>('feed');
   const [selectedProfileId, setSelectedProfileId] = useState<string | undefined>();
+  const [showSearch, setShowSearch] = useState(false);
   const { user, profile, loading, signOut } = useAuth();
 
   // === URL PROFILE LOOKUP — WORKS EVEN WHEN NOT LOGGED IN ===
@@ -97,9 +99,12 @@ const Main = () => {
     return <Auth />;
   }
 
-  const handleMessageUser = () => {
-    setView('messages');
-  };
+  const handleMessageUser = (profile: ProfileType) => {
+  setView('messages');
+  setSelectedProfileId(undefined);
+  // Let Messages.tsx handle the actual selection via event
+  window.dispatchEvent(new CustomEvent('openDirectMessage', { detail: profile }));
+};
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -109,7 +114,13 @@ const Main = () => {
             聊天
           </h1>
           <div className="flex items-center gap-2">
-            <button
+<button
+    onClick={() => setShowSearch(true)}
+    className="p-3 rounded-full hover:bg-gray-100 transition"
+  >
+    <SearchIcon size={24} />
+  </button>            
+<button
               onClick={() => {
                 setView('feed');
                 setSelectedProfileId(undefined);
@@ -148,6 +159,7 @@ const Main = () => {
         {view === 'feed' && <Feed />}
         {view === 'messages' && <Messages />}
         {view === 'profile' && <Profile userId={selectedProfileId} onMessage={handleMessageUser} />}
+        {showSearch && <Search onClose={() => setShowSearch(false)} />}
       </main>
 
       <footer className="text-center text-gray-400 text-xs py-4 border-t border-gray-200 bg-white">

@@ -137,9 +137,9 @@ export const Feed = () => {
         return <video src={url} className="max-h-48 rounded-lg" controls />;
       }
       return (
-        <div className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg">
-          <FileText size={20} />
-          <span className="text-sm">{file.name}</span>
+        <div className="flex items-center gap-2 p-3 bg-[rgb(var(--color-surface-hover))] rounded-lg">
+          <FileText size={20} className="text-[rgb(var(--color-text-secondary))]" />
+          <span className="text-sm text-[rgb(var(--color-text))]" >{file.name}</span>
         </div>
       );
     }
@@ -151,9 +151,9 @@ export const Feed = () => {
         return <video src={remoteUrl} className="max-h-48 rounded-lg" controls />;
       }
       return (
-        <div className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg">
-          <Link size={20} />
-          <span className="text-sm truncate max-w-[200px]">{remoteUrl}</span>
+        <div className="flex items-center gap-2 p-3 bg-[rgb(var(--color-surface-hover))] rounded-lg">
+          <Link size={20} className="text-[rgb(var(--color-text-secondary))]" />
+          <span className="text-sm truncate max-w-[200px] text-[rgb(var(--color-text))]">{remoteUrl}</span>
         </div>
       );
     }
@@ -162,7 +162,7 @@ export const Feed = () => {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div ref={scrollRef} className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
+      <div ref={scrollRef} className="sticky top-0 z-40 bg-[rgb(var(--color-surface))] border-b border-[rgb(var(--color-border))] shadow-sm">
         {isExpanded ? (
           <form onSubmit={createPost} className="p-4 space-y-3">
             <textarea
@@ -170,12 +170,12 @@ export const Feed = () => {
               onChange={(e) => setContent(e.target.value)}
               placeholder="What's happening?"
               rows={3}
-              className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:border-[rgb(var(--color-accent))] resize-none"
+              className="w-full px-4 py-3 border border-[rgb(var(--color-border))] rounded-2xl focus:outline-none focus:border-[rgb(var(--color-accent))] resize-none text-[rgb(var(--color-text))]"
               autoFocus
             />
             
             {(file || remoteUrl) && (
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-[rgb(var(--color-surface-hover))] rounded-lg">
                 <div className="flex-1">
                   {getPreview()}
                 </div>
@@ -185,15 +185,15 @@ export const Feed = () => {
                     setFile(null);
                     setRemoteUrl('');
                   }}
-                  className="ml-2 p-1 hover:bg-gray-200 rounded-full transition"
+                  className="ml-2 p-1 hover:bg-[rgb(var(--color-border))] rounded-full transition"
                 >
-                  <X size={18} />
+                  <X size={18} className="text-[rgb(var(--color-text-secondary))]" />
                 </button>
               </div>
             )}
 
             {isUploading && (
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="w-full bg-[rgb(var(--color-border))] rounded-full h-2 overflow-hidden">
                 <div 
                   className="bg-[rgba(var(--color-accent),1)] h-full transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
@@ -216,12 +216,12 @@ export const Feed = () => {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-gray-100 rounded-full text-sm hover:bg-gray-200 transition flex items-center gap-2"
+                className="px-4 py-2 bg-[rgb(var(--color-surface-hover))] rounded-full text-sm hover:bg-[rgb(var(--color-border))] transition flex items-center gap-2 text-[rgb(var(--color-text))]"
               >
-                <Paperclip size={16} /> {file ? 'Change File' : 'Attach'}
+                <Paperclip size={16} className="text-[rgb(var(--color-text-secondary))]" /> {file ? 'Change File' : 'Attach'}
               </button>
               <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-500">or</span>
+                <span className="text-xs text-[rgb(var(--color-text-secondary))]">or</span>
                 <input
                   type="url"
                   value={remoteUrl}
@@ -230,13 +230,13 @@ export const Feed = () => {
                     setFile(null);
                   }}
                   placeholder="Paste image/video/file URL..."
-                  className="flex-1 min-w-0 px-3 py-1.5 text-sm border border-gray-300 rounded-full focus:outline-none focus:border-[rgb(var(--color-accent))]"
+                  className="flex-1 min-w-0 px-3 py-1.5 text-sm border border-[rgb(var(--color-border))] rounded-full focus:outline-none focus:border-[rgb(var(--color-accent))] text-[rgb(var(--color-text))]"
                 />
               </div>
               <button
                 type="submit"
                 disabled={isUploading || (!content.trim() && !file && !remoteUrl.trim())}
-                className="ml-auto bg-[rgba(var(--color-accent),1)] disabled:bg-gray-300 text-[rgb(var(--color-text-on-primary))] px-6 py-2 rounded-full hover:bg-[rgba(var(--color-primary),1)] flex items-center gap-2 font-semibold transition"
+                className="ml-auto bg-[rgba(var(--color-accent),1)] disabled:bg-[rgb(var(--color-border))] text-[rgb(var(--color-text-on-primary))] px-6 py-2 rounded-full hover:bg-[rgba(var(--color-primary),1)] flex items-center gap-2 font-semibold transition"
               >
                 <Send size={16} />
                 {isUploading ? 'Uploading...' : 'Post'}
@@ -246,22 +246,22 @@ export const Feed = () => {
         ) : (
           <button
             onClick={() => setIsExpanded(true)}
-            className="w-full p-4 flex items-center gap-3 hover:bg-gray-50 transition"
+            className="w-full p-4 flex items-center gap-3 hover:bg-[rgb(var(--color-surface-hover))] transition"
           >
-            <Edit3 size={20} className="text-gray-500" />
-            <span className="text-gray-600">Write a post...</span>
+            <Edit3 size={20} className="text-[rgb(var(--color-text-secondary))]" />
+            <span className="text-[rgb(var(--color-text-secondary))]" >Write a post...</span>
           </button>
         )}
       </div>
 
       <div>
         {posts.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-[rgb(var(--color-text-secondary))]" >
             {FOLLOW_ONLY_FEED ? 'No posts from people you follow yet.' : 'No posts yet. Be the first!'}
           </div>
         )}
         {posts.map((post) => (
-          <div key={post.id} className="border-b border-gray-200 p-4 hover:bg-gray-50 transition bg-white">
+          <div key={post.id} className="border-b border-[rgb(var(--color-border))] p-4 hover:bg-[rgb(var(--color-surface-hover))] transition bg-[rgb(var(--color-surface))]" >
             <div className="flex gap-4 items-start">
               <button onClick={() => goToProfile(post.user_id)} className="flex-shrink-0">
                 <img
@@ -272,14 +272,14 @@ export const Feed = () => {
               </button>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1 flex-wrap">
-                  <button onClick={() => goToProfile(post.user_id)} className="font-bold hover:underline">
+                  <button onClick={() => goToProfile(post.user_id)} className="font-bold hover:underline text-[rgb(var(--color-text))]" >
                     {post.profiles?.display_name}
                   </button>
                   {post.profiles?.verified && <BadgeCheck size={16} className="text-[rgb(var(--color-accent))]" />}
-                  <span className="text-gray-500 text-sm">@{post.profiles?.username}</span>
-                  <span className="text-gray-500 text-sm">· {new Date(post.created_at).toLocaleDateString()}</span>
+                  <span className="text-[rgb(var(--color-text-secondary))] text-sm">@{post.profiles?.username}</span>
+                  <span className="text-[rgb(var(--color-text-secondary))] text-sm">· {new Date(post.created_at).toLocaleDateString()}</span>
                 </div>
-                <p className="mt-1 whitespace-pre-wrap break-words">{post.content}</p>
+                <p className="mt-1 whitespace-pre-wrap break-words text-[rgb(var(--color-text))]" >{post.content}</p>
                 {post.media_url && (
                   <div className="mt-3">
                     {post.media_type === 'image' && (
@@ -296,9 +296,9 @@ export const Feed = () => {
                         href={post.media_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg hover:bg-gray-200 transition inline-block"
+                        className="flex items-center gap-2 p-3 bg-[rgb(var(--color-surface-hover))] rounded-lg hover:bg-[rgb(var(--color-border))] transition inline-block text-[rgb(var(--color-text))]" 
                       >
-                        <FileText size={20} /> Download File
+                        <FileText size={20} className="text-[rgb(var(--color-text-secondary))]" /> Download File
                       </a>
                     )}
                   </div>

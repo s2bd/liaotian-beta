@@ -18,6 +18,10 @@
   --color-background: 255, 255, 255; /* White */
   --color-text: 17, 24, 39;          /* Gray-900 */
   --color-text-on-primary: 255, 255, 255; /* White for text over primary color */
+  --color-surface: 255, 255, 255;   /* Card backgrounds - white in light */
+  --color-border: 229, 231, 235;    /* Borders - gray-200 in light */
+  --color-text-secondary: 107, 114, 128; /* Secondary text - gray-500 in light */
+  --color-surface-hover: 249, 250, 251;  /* Hover states - gray-50 in light */
 }
 
 /* LT Dark Theme: Dark mode with inverted colors */
@@ -28,6 +32,10 @@
   --color-background: 17, 24, 39;  /* Dark Gray */
   --color-text: 255, 255, 255;     /* White */
   --color-text-on-primary: 0, 0, 0; /* Black for text over primary color */
+  --color-surface: 31, 41, 55;     /* Card backgrounds - gray-800 in dark */
+  --color-border: 55, 65, 81;      /* Borders - gray-700 in dark */
+  --color-text-secondary: 156, 163, 175; /* Secondary text - gray-400 in dark */
+  --color-surface-hover: 51, 65, 85;     /* Hover states - gray-700 in dark */
 }
 
 /* MuxDay Theme: Blue analogous shades */
@@ -38,6 +46,10 @@
   --color-background: 255, 255, 255;
   --color-text: 17, 24, 39;
   --color-text-on-primary: 255, 255, 255;
+  --color-surface: 255, 255, 255;
+  --color-border: 229, 231, 235;
+  --color-text-secondary: 107, 114, 128;
+  --color-surface-hover: 249, 250, 251;
 }
 
 /* Amrella Theme: Green analogous shades */
@@ -48,4 +60,8 @@
   --color-background: 255, 255, 255;
   --color-text: 17, 24, 39;
   --color-text-on-primary: 255, 255, 255;
+  --color-surface: 255, 255, 255;
+  --color-border: 229, 231, 235;
+  --color-text-secondary: 107, 114, 128;
+  --color-surface-hover: 249, 250, 251;
 }

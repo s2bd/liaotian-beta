@@ -1,5 +1,5 @@
 // src/components/Themes.tsx
-import { BadgeCheck } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 import { Profile } from '../lib/supabase';
 
 interface ThemePreset {
@@ -39,7 +39,7 @@ export const Themes = ({ currentTheme, onChange, loading }: ThemesProps) => {
               <h4 className="font-semibold">{preset.name}</h4>
               <p className="text-sm text-gray-600">{preset.desc}</p>
             </div>
-            {currentTheme === preset.value && <BadgeCheck size={16} className="text-blue-500" />}
+            {currentTheme === preset.value && <CheckCircle size={16} className="text-blue-500" />}
           </div>
         </div>
       ))}

@@ -1,3 +1,51 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ==========================================
+  THEME CSS VARIABLES
+  Defined using RGB values for opacity control (e.g., bg-[rgba(var(--color-primary),.1)])
+  ========================================== 
+*/
+
+/* DEFAULT THEME: LT Classic (Fiery orange and reds) */
+:root, .theme-lt-classic {
+  /* Primary/Accent colors - use RGB values */
+  --color-primary: 255, 69, 0;    /* Orange-Red */
+  --color-accent: 255, 140, 0;     /* Dark Orange */
+  
+  /* Text/Background colors */
+  --color-background: 255, 255, 255; /* White */
+  --color-text: 17, 24, 39;          /* Gray-900 */
+  --color-text-on-primary: 255, 255, 255; /* White for text over primary color */
+}
+
+/* LT Dark Theme: Dark mode with inverted colors */
+.theme-lt-dark {
+  --color-primary: 255, 140, 0;    /* Dark Orange */
+  --color-accent: 255, 69, 0;     /* Orange-Red */
+  
+  --color-background: 17, 24, 39;  /* Dark Gray */
+  --color-text: 255, 255, 255;     /* White */
+  --color-text-on-primary: 0, 0, 0; /* Black for text over primary color */
+}
+
+/* MuxDay Theme: Blue analogous shades */
+.theme-muxday {
+  --color-primary: 59, 130, 246;   /* Blue-500 */
+  --color-accent: 96, 165, 250;    /* Blue-400 */
+
+  --color-background: 255, 255, 255;
+  --color-text: 17, 24, 39;
+  --color-text-on-primary: 255, 255, 255;
+}
+
+/* Amrella Theme: Green analogous shades */
+.theme-amrella {
+  --color-primary: 16, 185, 129;   /* Green-500 */
+  --color-accent: 52, 211, 153;    /* Green-400 */
+
+  --color-background: 255, 255, 255;
+  --color-text: 17, 24, 39;
+  --color-text-on-primary: 255, 255, 255;
+}

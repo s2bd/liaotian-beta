@@ -68,7 +68,7 @@
 
 /* Cooper Black Theme: Neon Yellow/Lime Analogous Dark Theme */
 .theme-cooper-black {
-  --color-primary: 190, 240, 0;    /* Neon Lime/Yellow */
+  --color-primary: 255, 255, 0;    /* Pure Yellow */
   --color-accent: 230, 255, 0;    /* Lighter Neon Yellow */
   
   --color-background: 20, 20, 20;  /* Very Dark Gray/Black */

@@ -331,7 +331,7 @@ export const Auth = () => {
           </div>
 
           <div className="text-center text-gray-600 text-sm mt-12 font-bold">
-            © Mux 2025
+            © Mux {new Date().getFullYear()}
           </div>
         </div>
       </div>

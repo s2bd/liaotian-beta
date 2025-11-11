@@ -50,11 +50,9 @@ export const Auth = () => {
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { signUp, signIn } = useAuth();
-
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalSlug, setModalSlug] = useState('');
-  const { signUp, signIn } = useAuth();
   
   useEffect(() => {
     setError('');

@@ -281,7 +281,7 @@ export const Messages = () => {
         return <video src={url} className="max-h-32 rounded-lg" controls />;
       }
       return (
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-sm text-[rgb(var(--color-text))]">
           <FileText size={16} />
           <span>{file.name}</span>
         </div>
@@ -295,7 +295,7 @@ export const Messages = () => {
         return <video src={remoteUrl} className="max-h-32 rounded-lg" controls />;
       }
       return (
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-sm text-[rgb(var(--color-text))]">
           <Link size={16} />
           <span className="truncate max-w-[150px]">{remoteUrl}</span>
         </div>
@@ -316,7 +316,7 @@ export const Messages = () => {
               placeholder="Search people..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-[rgb(var(--color-border))] rounded-lg focus:outline-none focus:border-[rgb(var(--color-accent))] bg-[rgb(var(--color-surface-hover))]"
+              className="w-full pl-10 pr-4 py-2 border border-[rgb(var(--color-border))] rounded-lg focus:outline-none focus:border-[rgb(var(--color-accent))] bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))]"
             />
           </div>
         </div>
@@ -336,7 +336,7 @@ export const Messages = () => {
                 setShowSidebar(false);
                 setSearchQuery('');
               }}
-              className={`w-full flex items-center gap-3 p-4 transition border-b border-[rgb(var(--color-border))] ${selectedUser?.id === u.id ? 'bg-[rgb(var(--color-border))]' : 'hover:bg-[rgb(var(--color-surface-hover))]'}`}
+              className={`w-full flex items-center gap-3 p-4 transition border-b border-[rgb(var(--color-border))] ${selectedUser?.id === u.id ? 'bg-[rgb(var(--color-surface-hover))]' : 'hover:bg-[rgb(var(--color-surface-hover))]'}`}
             >
               <img
                 src={u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
@@ -344,7 +344,7 @@ export const Messages = () => {
                 alt=""
               />
               <div className="text-left flex-1 min-w-0">
-                <div className="font-semibold flex items-center gap-1 truncate">
+                <div className="font-semibold flex items-center gap-1 truncate text-[rgb(var(--color-text))]">
                   {u.display_name}
                   {u.verified && <BadgeCheck size={16} className="text-[rgb(var(--color-accent))] flex-shrink-0" />}
                 </div>
@@ -355,7 +355,7 @@ export const Messages = () => {
         </div>
       </div>
 
-      <div className={`flex-1 flex flex-col bg-[rgb(var(--color-surface))] transition-all duration-300 ease-in-out ${selectedUser ? '' : 'hidden md:flex'}`}>
+      <div className={`flex-1 flex flex-col bg-[rgb(var(--color-background))] transition-all duration-300 ease-in-out ${selectedUser ? '' : 'hidden md:flex'}`}>
         {selectedUser ? (
           <>
             <div className="bg-[rgb(var(--color-surface))] border-b border-[rgb(var(--color-border))] p-3 flex items-center gap-3 sticky top-0 z-20 shadow-sm">
@@ -369,7 +369,7 @@ export const Messages = () => {
                   alt=""
                 />
                 <div className="text-left min-w-0">
-                  <div className="font-bold flex items-center gap-1 truncate">
+                  <div className="font-bold flex items-center gap-1 truncate text-[rgb(var(--color-text))]">
                     {selectedUser.display_name}
                     {selectedUser.verified && <BadgeCheck size={16} className="text-[rgb(var(--color-accent))] flex-shrink-0" />}
                   </div>
@@ -455,7 +455,7 @@ export const Messages = () => {
                       setFile(null);
                       setRemoteUrl('');
                     }}
-                    className="p-1 hover:bg-[rgb(var(--color-surface-hover))] rounded-full transition"
+                    className="p-1 hover:bg-[rgb(var(--color-surface-hover))] rounded-full transition text-[rgb(var(--color-text))]"
                   >
                     <X size={18} />
                   </button>
@@ -463,7 +463,7 @@ export const Messages = () => {
               )}
 
               {isUploading && (
-                <div className="mb-3 w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div className="mb-3 w-full bg-[rgb(var(--color-border))] rounded-full h-2 overflow-hidden">
                   <div 
                     className="bg-[rgba(var(--color-accent),1)] h-full transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
@@ -501,7 +501,7 @@ export const Messages = () => {
                       setFile(null);
                     }}
                     placeholder="Paste media URL..."
-                    className="flex-1 px-3 py-2 text-sm border border-[rgb(var(--color-border))] rounded-full focus:outline-none focus:border-[rgb(var(--color-accent))]"
+                    className="flex-1 px-3 py-2 text-sm border border-[rgb(var(--color-border))] rounded-full focus:outline-none focus:border-[rgb(var(--color-accent))] bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))]"
                   />
                 </div>
 
@@ -510,7 +510,7 @@ export const Messages = () => {
                   placeholder="Type a message..."
                   value={content}
                   onChange={handleInputChange}
-                  className="flex-1 px-4 py-2.5 border border-[rgb(var(--color-border))] rounded-full focus:outline-none focus:border-[rgb(var(--color-accent))] text-base"
+                  className="flex-1 px-4 py-2.5 border border-[rgb(var(--color-border))] rounded-full focus:outline-none focus:border-[rgb(var(--color-accent))] text-base bg-[rgb(var(--color-background))] text-[rgb(var(--color-text))]"
                 />
 
                 <button

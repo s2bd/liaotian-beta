@@ -335,7 +335,7 @@ export const Auth = () => {
           </div>
         </div>
       </div>
+       <PolicyModal isOpen={isModalOpen} title={modalTitle} slug={modalSlug} onClose={closeModal} />
     </div>
-    <PolicyModal isOpen={isModalOpen} title={modalTitle} slug={modalSlug} onClose={closeModal} />
   );
 };

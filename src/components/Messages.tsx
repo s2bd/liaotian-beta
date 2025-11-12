@@ -164,15 +164,9 @@ export const Messages = () => {
             
             // --- MODIFICATION START ---
             let finalMsg = msg;
-            // If it's a reply and the joined data isn't present, fetch it.
-            // This handles the case where the subscription payload doesn't include the join
-            // (which it never does) and the render-time fallback might fail
-            // if the message isn't in the local state (e.g., reply to old message).
-            if (finalMsg.reply_to_id && !finalMsg.reply_to) {
+            // If it's a reply, fetch the replied-to message details.
+            if (finalMsg.reply_to_id) {
               
-              // We CANNOT trust `messages.find()` here due to stale closures.
-              // So we just fetch. The render-time fallback will still work
-              // and this fetch only adds data if it was missing.
               const { data: repliedToMsgData } = await supabase
                 .from('messages')
                 .select('id, content, sender_id, media_type') // <--- MODIFICATION: Added media_type
@@ -180,7 +174,8 @@ export const Messages = () => {
                 .single();
               
               if (repliedToMsgData) {
-                finalMsg.reply_to = repliedToMsgData;
+                // Manually assign the fetched reply data to the payload object
+                finalMsg = { ...finalMsg, reply_to: repliedToMsgData } as AppMessage; 
               }
             }
             // --- MODIFICATION END ---
@@ -310,7 +305,8 @@ export const Messages = () => {
   const loadMessages = async (recipientId: string) => {
     const { data } = await supabase
       .from('messages')
-      .select('*, reply_to:messages!reply_to_id(id, content, sender_id, media_type)') // <--- MODIFICATION: Added media_type
+      // --- FIX: Ensure media_type is selected in the join for reply_to messages ---
+      .select('*, reply_to:messages!reply_to_id(id, content, sender_id, media_type)')
       .or(
         `and(sender_id.eq.${user!.id},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${user!.id})`
       )
@@ -469,15 +465,16 @@ export const Messages = () => {
                     }`}
                   >
                     {/* --- MODIFICATION START --- */}
-                    {/* Only render this block if reply_to_id exists */}
+                    {/* Only render this block if reply_to_id exists (this handles the null check) */}
                     {msg.reply_to_id && (() => {
                       // Find the replied-to message. Use joined data first, fallback to in-memory search.
-                      // The joined data (msg.reply_to) comes from loadMessages OR the subscription fix
-                      // The fallback `messages.find` will also have media_type as it's a full AppMessage
+                      // This ensures that after a refresh (joined data present) or a new message 
+                      // (subscription-fetched data present) or a very recent message 
+                      // (in-memory search possible), the content is available.
                       const repliedToMsg = msg.reply_to ? msg.reply_to : messages.find(m => m.id === msg.reply_to_id);
                       
-                      // If the replied-to message isn't found (e.g., it's very old and not loaded),
-                      // or if the join failed and it's not in the array, don't render the block.
+                      // The message won't render the reply block if repliedToMsg is null, 
+                      // which covers the case where reply_to_id is present but the message details aren't found.
                       if (!repliedToMsg) return null;
                       
                       const isReplyToSelf = repliedToMsg.sender_id === user!.id;

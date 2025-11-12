@@ -294,6 +294,8 @@ export const Messages = () => {
     setTimeout(scrollToBottom, 100);
   };
 
+
+
   const displayList = searchQuery ? searchResults : conversations;
 
   const getPreview = () => {
@@ -423,8 +425,8 @@ export const Messages = () => {
                   key={msg.id}
                   className={`flex items-center gap-2 group ${msg.sender_id === user!.id ? 'justify-end' : 'justify-start'}`}
                 >
-                  {/* Show reply icon on the left for received messages */}
-                  {msg.sender_id !== user!.id && (
+                  {/* Show reply icon on the left for sent messages */}
+                  {msg.sender_id === user!.id && (
                     <button
                       onClick={() => setReplyingTo(msg)}
                       className="p-1 rounded-full text-[rgb(var(--color-text-secondary))] opacity-0 group-hover:opacity-100 transition hover:bg-[rgb(var(--color-surface-hover))]"
@@ -498,14 +500,16 @@ export const Messages = () => {
                       }`}
                     >
                       {new Date(msg.created_at).toLocaleTimeString([], {
+                        day: 'numeric',
+                        month: 'short',
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
                     </span>
                   </div>
 
-                  {/* Show reply icon on the right for sent messages */}
-                  {msg.sender_id === user!.id && (
+                  {/* Show reply icon on the right for received messages */}
+                  {msg.sender_id !== user!.id && (
                     <button
                       onClick={() => setReplyingTo(msg)}
                       className="p-1 rounded-full text-[rgb(var(--color-text-secondary))] opacity-0 group-hover:opacity-100 transition hover:bg-[rgb(var(--color-surface-hover))]"

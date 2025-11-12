@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase, Profile as ProfileType, Post, uploadMedia } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { BadgeCheck, Edit2, Check, MessageCircle, X, UserMinus, Paperclip, FileText, Settings as SettingsIcon } from 'lucide-react';
+import { BadgeCheck, Edit2, Check, MessageCircle, X, UserMinus, Paperclip, FileText, Settings as SettingsIcon, MoreVertical, Trash2 } from 'lucide-react';
 
 export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; onMessage?: (profile: ProfileType) => void; onSettings?: () => void }) => {
   const [profile, setProfile] = useState<ProfileType | null>(null);
@@ -20,6 +20,13 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
   const [showFollowing, setShowFollowing] = useState(false);
   const [followersList, setFollowersList] = useState<ProfileType[]>([]);
   const [followingList, setFollowingList] = useState<ProfileType[]>([]);
+
+  // STATES FOR POST DELETION
+  const [postToDelete, setPostToDelete] = useState<Post | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState(0);
+  const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const { user } = useAuth();
   const targetUserId = userId || user?.id;
@@ -172,6 +179,63 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
       setFollowerCount(prev => prev - 1);
     }
   };
+
+  // POST DELETION FUNCTIONS
+  const startDeleteHold = (post: Post) => {
+    if (holdIntervalRef.current) return;
+
+    // Reset and start
+    setDeleteProgress(0);
+    setPostToDelete(post);
+    setShowDeleteModal(true);
+
+    let progress = 0;
+    const interval = 50; // Update every 50ms
+    const totalTime = 5000; // 5 seconds
+    const steps = totalTime / interval;
+    const increment = 100 / steps;
+
+    holdIntervalRef.current = setInterval(() => {
+      progress += increment;
+      if (progress >= 100) {
+        clearInterval(holdIntervalRef.current!);
+        holdIntervalRef.current = null;
+        deletePost(post);
+        return;
+      }
+      setDeleteProgress(progress);
+    }, interval);
+  };
+
+  const cancelDeleteHold = () => {
+    if (holdIntervalRef.current) {
+      clearInterval(holdIntervalRef.current);
+      holdIntervalRef.current = null;
+    }
+    setDeleteProgress(0);
+  };
+
+  const deletePost = async (post: Post) => {
+    setShowDeleteModal(false);
+    setPostToDelete(null);
+    cancelDeleteHold();
+
+    // Optimistically remove from UI
+    setPosts(prev => prev.filter(p => p.id !== post.id));
+
+    // Delete from DB
+    const { error } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', post.id);
+
+    if (error) {
+      console.error('Error deleting post:', error);
+      // Re-add the post to the UI if deletion failed
+      loadPosts(); // Simple re-fetch to correct state
+    }
+  };
+
 
   const updateProfile = async () => {
     await supabase
@@ -402,10 +466,87 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
                   </div>
                 )}
       </div>
+
+    {isOwnProfile && (
+        <div className="relative flex-shrink-0">
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMenuId(openMenuId === post.id ? null : post.id);
+                }}
+                className="p-1 rounded-full text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))] transition"
+            >
+                <MoreVertical size={20} />
+            </button>
+            {openMenuId === post.id && (
+                <div 
+                    className="absolute right-0 mt-2 w-48 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-lg shadow-xl overflow-hidden z-10"
+                    onMouseLeave={() => setOpenMenuId(null)}
+                >
+                    <button
+                        onClick={() => {
+                            setPostToDelete(post);
+                            setShowDeleteModal(true);
+                            setOpenMenuId(null);
+                        }}
+                        className="w-full text-left p-3 text-red-500 hover:bg-red-50 transition flex items-center gap-2"
+                    >
+                        <Trash2 size={18} /> Delete Post
+                    </button>
+                </div>
+            )}
+        </div>
+    )}
     </div>
   </div>
 ))}
       </div>
+
+      {showDeleteModal && postToDelete && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => {
+          setShowDeleteModal(false);
+          setPostToDelete(null);
+          cancelDeleteHold();
+        }}>
+          <div className="bg-[rgb(var(--color-surface))] rounded-2xl w-full max-w-sm flex flex-col p-6 text-[rgb(var(--color-text))]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <Trash2 size={24} className="text-red-500 flex-shrink-0" />
+              <h3 className="font-bold text-xl">Confirm Deletion</h3>
+            </div>
+            <p className="mb-6">Are you sure? This action **cannot be undone!**</p>
+            
+            <button
+              onMouseDown={() => startDeleteHold(postToDelete)}
+              onMouseUp={cancelDeleteHold}
+              onMouseLeave={cancelDeleteHold}
+              onTouchStart={() => startDeleteHold(postToDelete)}
+              onTouchEnd={cancelDeleteHold}
+              className="relative w-full py-3 rounded-xl font-bold text-lg text-white bg-red-500 overflow-hidden disabled:opacity-50 transition duration-100"
+              disabled={deleteProgress > 0 && deleteProgress < 100}
+            >
+              <div
+                className="absolute inset-0 bg-red-700 transition-all duration-50"
+                style={{ width: `${deleteProgress}%` }}
+              />
+              <span className="relative z-10">
+                {deleteProgress > 0 ? `Hold to Delete (${Math.ceil(5 - (deleteProgress / 100) * 5)}s)` : 'Hold to Delete'}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setShowDeleteModal(false);
+                setPostToDelete(null);
+                cancelDeleteHold();
+              }}
+              className="mt-3 w-full py-2 text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))] rounded-xl transition"
+            >
+              Cancel
+            </button>
+
+          </div>
+        </div>
+      )}
 
       {(showFollowers || showFollowing) && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeModal}>

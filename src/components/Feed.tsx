@@ -2,7 +2,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase, Post, uploadMedia } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Send, BadgeCheck, Edit3, Image, FileText, X, Paperclip, Link, Heart, MessageCircle } from 'lucide-react';
+import { Send, BadgeCheck, Edit3, Image, FileText, X, Paperclip, Link, Heart, MessageCircle, LayoutGrid, Smartphone } from 'lucide-react';
+import { Shots } from './Shots';
 
 const FOLLOW_ONLY_FEED = import.meta.env.VITE_FOLLOW_ONLY_FEED === 'true';
 
@@ -46,6 +47,9 @@ export const Feed = () => {
   const { user } = useAuth();
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tabs State
+  const [activeTab, setActiveTab] = useState<'posts' | 'shots'>('posts');
 
   // Lightbox state
   const [showLightbox, setShowLightbox] = useState(false);
@@ -170,30 +174,49 @@ export const Feed = () => {
     setIsLoadingMorePosts(false);
   }, [isLoadingMorePosts, hasMorePosts, postPage, user, fetchUserLikes]);
 
-  // Handle Likes
-  const handleToggleLike = async (post: Post) => {
+  // Handle Likes - MODIFIED LOGIC
+  const handleInitialLike = async (post: Post) => {
     if (!user) return;
-    const isLiked = likedPostIds.has(post.id);
-    
-    // Optimistic Update
-    const newSet = new Set(likedPostIds);
-    if (isLiked) newSet.delete(post.id);
-    else newSet.add(post.id);
-    setLikedPostIds(newSet);
 
-    setPosts(current => current.map(p => {
-      if (p.id === post.id) {
-        return { ...p, like_count: isLiked ? (p.like_count - 1) : (p.like_count + 1) };
-      }
-      return p;
-    }));
+    // 1. If the user hasn't liked it yet, apply the like immediately
+    if (!likedPostIds.has(post.id)) {
+        const newSet = new Set(likedPostIds);
+        newSet.add(post.id);
+        setLikedPostIds(newSet);
 
-    // DB Update
-    if (isLiked) {
-      await supabase.from('likes').delete().match({ user_id: user.id, entity_id: post.id, entity_type: 'post' });
-    } else {
-      await supabase.from('likes').insert({ user_id: user.id, entity_id: post.id, entity_type: 'post' });
+        // Optimistic UI Update
+        setPosts(current => current.map(p => {
+            if (p.id === post.id) return { ...p, like_count: (p.like_count + 1) };
+            return p;
+        }));
+
+        // DB Insert
+        await supabase.from('likes').insert({ user_id: user.id, entity_id: post.id, entity_type: 'post' });
     }
+
+    // 2. Open the modal (Requirement: Always open modal on click)
+    openLikesList(post.id);
+  };
+
+  // New function to remove like ONLY from the modal
+  const handleRemoveLikeFromModal = async (postId: string) => {
+      if (!user) return;
+
+      // Optimistic UI Update
+      const newSet = new Set(likedPostIds);
+      newSet.delete(postId);
+      setLikedPostIds(newSet);
+
+      setPosts(current => current.map(p => {
+          if (p.id === postId) return { ...p, like_count: Math.max(0, p.like_count - 1) };
+          return p;
+      }));
+
+      // Remove user from the displayed list immediately
+      setLikersList(prev => prev.filter(liker => liker.user_id !== user.id));
+
+      // DB Delete
+      await supabase.from('likes').delete().match({ user_id: user.id, entity_id: postId, entity_type: 'post' });
   };
 
   const openLikesList = async (postId: string) => {
@@ -287,6 +310,7 @@ export const Feed = () => {
       
       // --- PAGINATION: Handle infinite scroll
       if (
+        activeTab === 'posts' && // Only scroll load on posts tab
         window.innerHeight + document.documentElement.scrollTop + 200 >= document.documentElement.offsetHeight &&
         hasMorePosts &&
         !isLoadingMorePosts
@@ -298,7 +322,7 @@ export const Feed = () => {
     return () => {
       window.removeEventListener('scroll', handleScroll);
     };
-  }, [isExpanded, hasMorePosts, isLoadingMorePosts, loadMorePosts]); // Depends on scroll-related state
+  }, [isExpanded, hasMorePosts, isLoadingMorePosts, loadMorePosts, activeTab]); // Depends on scroll-related state
 
   // --- END FIX ---
 
@@ -397,6 +421,8 @@ export const Feed = () => {
 
   return (
     <div className="max-w-2xl mx-auto">
+      {/* COMPOSER - Only visible when Posts tab is active */}
+      {activeTab === 'posts' && (
       <div ref={scrollRef} className="sticky top-0 z-40 bg-[rgb(var(--color-surface))] border-b border-[rgb(var(--color-border))] shadow-sm">
         {isExpanded ? (
           <form onSubmit={createPost} className="p-4 space-y-3">
@@ -488,8 +514,30 @@ export const Feed = () => {
           </button>
         )}
       </div>
+      )}
+
+      {/* NAVIGATION TABS */}
+      <div className="flex border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] sticky top-[0px] z-30">
+        <button 
+          onClick={() => setActiveTab('posts')}
+          className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-bold transition border-b-2 ${activeTab === 'posts' ? 'border-[rgb(var(--color-accent))] text-[rgb(var(--color-accent))]' : 'border-transparent text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))]'}`}
+        >
+            <LayoutGrid size={18} /> Posts
+        </button>
+        <button 
+          onClick={() => setActiveTab('shots')}
+          className={`flex-1 py-3 flex items-center justify-center gap-2 text-sm font-bold transition border-b-2 ${activeTab === 'shots' ? 'border-[rgb(var(--color-accent))] text-[rgb(var(--color-accent))]' : 'border-transparent text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))]'}`}
+        >
+            <Smartphone size={18} /> Shots
+        </button>
+      </div>
 
       <div>
+        {/* CONDITIONAL RENDERING: POSTS vs SHOTS */}
+        {activeTab === 'shots' ? (
+            <Shots />
+        ) : (
+        <>
         {posts.length === 0 && !isLoadingMorePosts && ( // <-- Modified condition
           <div className="text-center py-12 text-[rgb(var(--color-text-secondary))]" >
             {FOLLOW_ONLY_FEED ? 'No posts from people you follow yet.' : 'No posts yet. Be the first!'}
@@ -551,7 +599,7 @@ export const Feed = () => {
                 <div className="flex items-center gap-6 mt-3">
                   <div className="flex items-center gap-1 group">
                     <button 
-                      onClick={(e) => { e.stopPropagation(); handleToggleLike(post); }}
+                      onClick={(e) => { e.stopPropagation(); handleInitialLike(post); }}
                       className={`p-2 rounded-full transition ${
                         likedPostIds.has(post.id) 
                           ? 'text-pink-500 bg-pink-500/10' 
@@ -605,6 +653,8 @@ export const Feed = () => {
           </div>
         )}
         {/* --- PAGINATION INDICATORS END --- */}
+        </>
+        )}
       </div>
 
       {/* Lightbox */}
@@ -662,20 +712,32 @@ export const Feed = () => {
                  <p className="text-center text-[rgb(var(--color-text-secondary))]">No likes yet.</p>
               ) : (
                 likersList.map((liker, idx) => (
-                  <div key={`${liker.user_id}-${idx}`} className="flex items-center gap-3">
-                    <img 
-                       src={liker.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${liker.profiles?.username}`}
-                       className="w-10 h-10 rounded-full cursor-pointer"
-                       alt="Avatar"
-                       onClick={() => goToProfile(liker.user_id)}
-                    />
-                    <div className="flex-1">
-                      <button onClick={() => goToProfile(liker.user_id)} className="font-bold hover:underline text-[rgb(var(--color-text))] text-sm block">
-                        {liker.profiles?.display_name}
-                        {liker.profiles?.verified && <BadgeCheck size={14} className="inline ml-1 text-[rgb(var(--color-accent))]" />}
-                      </button>
-                      <span className="text-sm text-[rgb(var(--color-text-secondary))]">@{liker.profiles?.username}</span>
+                  <div key={`${liker.user_id}-${idx}`} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <img 
+                        src={liker.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${liker.profiles?.username}`}
+                        className="w-10 h-10 rounded-full cursor-pointer"
+                        alt="Avatar"
+                        onClick={() => goToProfile(liker.user_id)}
+                        />
+                        <div>
+                        <button onClick={() => goToProfile(liker.user_id)} className="font-bold hover:underline text-[rgb(var(--color-text))] text-sm block">
+                            {liker.profiles?.display_name}
+                            {liker.profiles?.verified && <BadgeCheck size={14} className="inline ml-1 text-[rgb(var(--color-accent))]" />}
+                        </button>
+                        <span className="text-sm text-[rgb(var(--color-text-secondary))]">@{liker.profiles?.username}</span>
+                        </div>
                     </div>
+                    {/* Requirement: Unliking is only possible from here */}
+                    {liker.user_id === user?.id && (
+                        <button 
+                            onClick={() => handleRemoveLikeFromModal(activeLikesModal)}
+                            className="p-2 rounded-full bg-red-50 text-red-500 hover:bg-red-100 transition"
+                            title="Remove Like"
+                        >
+                            <Heart size={16} className="fill-current" />
+                        </button>
+                    )}
                   </div>
                 ))
               )}

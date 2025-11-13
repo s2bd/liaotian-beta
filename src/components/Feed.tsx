@@ -3,9 +3,14 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase, Post, uploadMedia } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Send, BadgeCheck, Edit3, Image, FileText, X, Paperclip, Link, Heart, MessageCircle, Loader2 } from 'lucide-react';
+import { RealtimeChannel } from '@supabase/supabase-js'; // Added import for RealtimeChannel type
 
 const FOLLOW_ONLY_FEED = import.meta.env.VITE_FOLLOW_ONLY_FEED === 'true';
 const POSTS_PER_PAGE = 10;
+
+// New Constants to enable/disable features
+const ENABLE_REALTIME_SUBSCRIPTION = false; // Set to false to disable and fix the disappearing post issue
+const ENABLE_SCROLL_BREAKER_FEATURE = true; // Set to true to enable the custom scroll bar logic
 
 // Auxiliary types for the new features
 interface Comment {
@@ -221,25 +226,29 @@ export const Feed = () => {
     // Initial load
     loadPosts(0);
 
-    const channel = supabase.channel('public:posts').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async (payload) => {
-      if (FOLLOW_ONLY_FEED && user) {
-        if (payload.new.user_id === user.id) {
-          const { data } = await supabase.from('posts').select('*, profiles(*)').eq('id', payload.new.id).single();
-          if (data) setPosts(current => [data, ...current]);
-          return;
+    let channel: RealtimeChannel | undefined;
+
+    if (ENABLE_REALTIME_SUBSCRIPTION) {
+      channel = supabase.channel('public:posts').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async (payload) => {
+        if (FOLLOW_ONLY_FEED && user) {
+          if (payload.new.user_id === user.id) {
+            const { data } = await supabase.from('posts').select('*, profiles(*)').eq('id', payload.new.id).single();
+            if (data) setPosts(current => [data, ...current]);
+            return;
+          }
+
+          const { data: followData } = await supabase
+            .from('follows')
+            .select('following_id')
+            .eq('follower_id', user.id)
+            .eq('following_id', payload.new.user_id);
+
+          if (!followData?.length) return;
         }
-
-        const { data: followData } = await supabase
-          .from('follows')
-          .select('following_id')
-          .eq('follower_id', user.id)
-          .eq('following_id', payload.new.user_id);
-
-        if (!followData?.length) return;
-      }
-      const { data } = await supabase.from('posts').select('*, profiles(*)').eq('id', payload.new.id).single();
-      if (data) setPosts(current => [data, ...current]);
-    }).subscribe();
+        const { data } = await supabase.from('posts').select('*, profiles(*)').eq('id', payload.new.id).single();
+        if (data) setPosts(current => [data, ...current]);
+      }).subscribe();
+    }
 
     const handleScroll = () => {
       const scrolled = window.scrollY > 100;
@@ -249,7 +258,7 @@ export const Feed = () => {
 
     // Logic for "Scroll and Hold" interaction
     const handleScrollInteraction = () => {
-      if (!hasMorePosts || isLoadingMore) return;
+      if (!ENABLE_SCROLL_BREAKER_FEATURE || !hasMorePosts || isLoadingMore) return;
 
       const scrollContainer = document.documentElement;
       // Check if user is at the bottom (with a small buffer)
@@ -281,14 +290,21 @@ export const Feed = () => {
     };
 
     window.addEventListener('scroll', handleScroll);
-    window.addEventListener('wheel', handleScrollInteraction);
-    window.addEventListener('touchmove', handleScrollInteraction);
+    
+    if (ENABLE_SCROLL_BREAKER_FEATURE) {
+      window.addEventListener('wheel', handleScrollInteraction);
+      window.addEventListener('touchmove', handleScrollInteraction);
+    }
     
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+          supabase.removeChannel(channel);
+      }
       window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('wheel', handleScrollInteraction);
-      window.removeEventListener('touchmove', handleScrollInteraction);
+      if (ENABLE_SCROLL_BREAKER_FEATURE) {
+        window.removeEventListener('wheel', handleScrollInteraction);
+        window.removeEventListener('touchmove', handleScrollInteraction);
+      }
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
     };
   }, [user, isExpanded, hasMorePosts, isLoadingMore, page]); // Added necessary deps
@@ -587,7 +603,7 @@ export const Feed = () => {
       </div>
 
       {/* Scroll Breaker & End Message */}
-      {posts.length > 0 && (
+      {posts.length > 0 && ENABLE_SCROLL_BREAKER_FEATURE && (
         <div className="py-8 flex flex-col items-center gap-2 w-full">
           {!hasMorePosts ? (
             <div className="bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] px-4 py-2 rounded-full shadow-lg text-sm text-[rgb(var(--color-text-secondary))]">
@@ -607,6 +623,14 @@ export const Feed = () => {
           )}
         </div>
       )}
+      {posts.length > 0 && !hasMorePosts && !ENABLE_SCROLL_BREAKER_FEATURE && (
+        <div className="py-8 flex flex-col items-center gap-2 w-full">
+          <div className="bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] px-4 py-2 rounded-full shadow-lg text-sm text-[rgb(var(--color-text-secondary))]">
+            You have seen all posts from people you follow currently.
+          </div>
+        </div>
+      )}
+
 
       {/* Lightbox */}
       {showLightbox && lightboxMediaUrl && (

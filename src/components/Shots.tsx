@@ -205,7 +205,7 @@ export const Shots = () => {
       <div className="flex flex-col items-center justify-center h-[60vh] text-[rgb(var(--color-text-secondary))] p-8 text-center">
         <Music2 size={48} className="mb-4 opacity-50" />
         <h3 className="text-xl font-bold mb-2">No Shots Yet</h3>
-        <p>No video content available in your feed. Post a video to see it here!</p>
+        <p>No video content available in your feed. Follow people who post video content, or post a video yourself to see them here!</p>
       </div>
     );
   }

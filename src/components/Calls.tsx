@@ -24,7 +24,7 @@ const Modal = ({ children, onClose, wide = false }: { children: React.ReactNode,
 type IncomingCall = {
   from: Profile;
   type: 'audio' | 'video';
-  peerCall: Peer.MediaConnection; // From PeerJS
+  peerCall: Peer.MediaConnection;
 };
 
 export const Calls = () => {
@@ -37,16 +37,25 @@ export const Calls = () => {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isCamOff, setIsCamOff] = useState(false);
-  const [mediaError, setMediaError] = useState<string | null>(null); // For UI errors
+  const [mediaError, setMediaError] = useState<string | null>(null);
 
-  // Refs for PeerJS
+  // Refs for PeerJS and State (to avoid effect re-runs)
   const peerRef = useRef<Peer | null>(null);
   const activeCallRef = useRef<Peer.MediaConnection | null>(null);
+  
+  // IMPORTANT: Keep refs to state so we can access latest values in Peer listeners
+  // without forcing the Peer useEffect to re-run and destroy the connection.
+  const callInProgressRef = useRef(callInProgress);
+  const incomingCallRef = useRef(incomingCall);
 
-  // --- WebRTC & Media Functions (Memoized) ---
+  useEffect(() => {
+    callInProgressRef.current = callInProgress;
+    incomingCallRef.current = incomingCall;
+  }, [callInProgress, incomingCall]);
+
+  // --- WebRTC & Media Functions ---
 
   // 1. Get User Media (Mic/Cam)
-  // This is now modified to handle permission errors gracefully
   const getMedia = useCallback(async (type: 'audio' | 'video') => {
     setMediaError(null);
     const constraints = {
@@ -62,31 +71,29 @@ export const Calls = () => {
       return stream;
     } catch (err: any) {
       console.error('Error getting user media:', err);
-      // Set UI error based on permission denial
+      
       if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
          setMediaError('No microphone or camera found.');
       } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-         if (type === 'video') {
-             setMediaError('Microphone and/or Camera access denied.');
-         } else {
-             setMediaError('Microphone access denied.');
-         }
+         setMediaError(type === 'video' ? 'Microphone/Camera access denied.' : 'Microphone access denied.');
       } else {
          setMediaError('Error accessing media devices.');
       }
       
-      // Proceed with no stream
+      // Proceed with an empty stream so the connection logic still works
       setLocalStream(null); 
       setIsMuted(true);
       if (type === 'video') setIsCamOff(true);
-      return null;
+      return new MediaStream(); // Return empty stream instead of null
     }
   }, []);
 
   // 2. Clean up media and connection
   const cleanupCall = useCallback(() => {
-    activeCallRef.current?.close();
-    activeCallRef.current = null;
+    if (activeCallRef.current) {
+        activeCallRef.current.close();
+        activeCallRef.current = null;
+    }
     
     localStream?.getTracks().forEach(track => track.stop());
     remoteStream?.getTracks().forEach(track => track.stop());
@@ -97,64 +104,58 @@ export const Calls = () => {
     setIncomingCall(null);
     setIsMuted(false);
     setIsCamOff(false);
-    setMediaError(null); // Clear errors
+    setMediaError(null);
   }, [localStream, remoteStream]);
 
-  // --- Call Action Functions (Memoized) ---
+  // --- Call Action Functions ---
 
-  // 4. Hang Up
   const handleHangUp = useCallback(() => {
-    cleanupCall(); // PeerJS handles notifying the other user via 'close' event
+    cleanupCall(); 
   }, [cleanupCall]);
   
-  // 5. Start a Call
   const startCall = useCallback(async (targetUser: Profile, type: 'audio' | 'video') => {
-    if (!user || callInProgress || !peerRef.current) return;
+    if (!user || callInProgressRef.current || !peerRef.current) return;
 
-    // Get stream. May return null if permissions denied, but we continue.
+    // Get stream (or empty stream if denied)
     const stream = await getMedia(type); 
     
     setCallInProgress({ with: targetUser, type, isCaller: true });
     
     const metadata = { from: user, type: type };
+    // We can safely use stream! here because getMedia now ensures a return
     const call = peerRef.current.call(targetUser.id, stream!, { metadata });
     
     activeCallRef.current = call;
 
-    // Set up listeners for this outgoing call
     call.on('stream', (remoteStream) => {
       setRemoteStream(remoteStream);
     });
     call.on('close', () => {
-      cleanupCall(); // Other user hung up
+      cleanupCall(); 
     });
     call.on('error', (err) => {
       console.error('Peer call error:', err);
       cleanupCall();
     });
 
-  }, [user, callInProgress, getMedia, cleanupCall]);
+  }, [user, getMedia, cleanupCall]);
   
-  // 6. Answer a Call
   const answerCall = useCallback(async () => {
     if (!incomingCall || !user) return;
 
-    // Get stream. May return null.
     const stream = await getMedia(incomingCall.type);
 
     setCallInProgress({ with: incomingCall.from, type: incomingCall.type, isCaller: false });
     
-    // Answer the call
     incomingCall.peerCall.answer(stream!);
     
     activeCallRef.current = incomingCall.peerCall;
 
-    // Set up listeners for this answered call
     incomingCall.peerCall.on('stream', (remoteStream) => {
       setRemoteStream(remoteStream);
     });
     incomingCall.peerCall.on('close', () => {
-      cleanupCall(); // Caller hung up
+      cleanupCall(); 
     });
     incomingCall.peerCall.on('error', (err) => {
       console.error('Peer call error:', err);
@@ -164,10 +165,9 @@ export const Calls = () => {
     setIncomingCall(null);
   }, [user, incomingCall, getMedia, cleanupCall]);
 
-  // 7. Deny a Call
   const denyCall = useCallback(() => {
      if(incomingCall) {
-        incomingCall.peerCall.close(); // Just close the connection
+        incomingCall.peerCall.close();
      }
      setIncomingCall(null);
   }, [incomingCall]);
@@ -184,11 +184,12 @@ export const Calls = () => {
      return () => window.removeEventListener('startCall', handleStartCall);
   }, [startCall]);
 
-  // Initialize PeerJS and listen for incoming calls
+  // Initialize PeerJS
+  // IMPORTANT: This effect must ONLY depend on `user` to avoid destroying the peer connection during state changes.
   useEffect(() => {
-    if (!user || peerRef.current) return;
+    if (!user) return;
+    if (peerRef.current) return; // Prevent double init
 
-    // Use the user's Supabase ID as their PeerJS ID
     const peer = new Peer(user.id);
     peerRef.current = peer;
 
@@ -196,17 +197,20 @@ export const Calls = () => {
       console.log('PeerJS connected with ID:', id);
     });
 
-    // This REPLACES the Supabase 'call-offer' broadcast listener
     peer.on('call', (call) => {
       const metadata = call.metadata;
       
-      // We are busy or already have an incoming call
-      if (callInProgress || incomingCall) {
+      // Use REFS to check state, so we don't need state in dependency array
+      if (callInProgressRef.current || incomingCallRef.current) {
         call.close();
         return;
       }
       
-      // Show incoming call modal
+      // Handle caller hanging up before answer
+      call.on('close', () => {
+         setIncomingCall(prev => (prev?.peerCall === call ? null : prev));
+      });
+
       setIncomingCall({
         from: metadata.from,
         type: metadata.type,
@@ -216,22 +220,22 @@ export const Calls = () => {
 
     peer.on('error', (err) => {
       console.error('PeerJS error:', err);
-      // Handle different error types, e.g., 'network', 'peer-unavailable'
-      if (err.type === 'peer-unavailable' && callInProgress && !remoteStream) {
-        setMediaError(`${callInProgress.with.display_name} is offline.`);
+      if (err.type === 'peer-unavailable') {
+          // We can access the ref here safely
+          if (callInProgressRef.current && !activeCallRef.current?.open) {
+             setMediaError(`${callInProgressRef.current.with.display_name} is unreachable.`);
+          }
       }
     });
 
-    // Cleanup on unmount
     return () => {
       peer.destroy();
       peerRef.current = null;
     };
-  }, [user, callInProgress, incomingCall]);
+  }, [user]); // Dependency array MUST remain minimal
 
 
   // --- Media Toggles ---
-  // Modified to check if tracks exist before toggling
 
   const toggleMute = () => {
     const audioTracks = localStream?.getAudioTracks() || [];
@@ -241,7 +245,6 @@ export const Calls = () => {
         });
         setIsMuted(!isMuted);
     } else {
-        // No track, just set error
         setMediaError('No microphone track available.');
     }
   };
@@ -254,14 +257,12 @@ export const Calls = () => {
         });
         setIsCamOff(!isCamOff);
     } else {
-        // No track, just set error
         setMediaError('No camera track available.');
     }
   };
   
   // --- Render Logic ---
 
-  // 1. Incoming Call Modal
   if (incomingCall) {
     return (
       <Modal onClose={denyCall}>
@@ -296,21 +297,21 @@ export const Calls = () => {
     );
   }
 
-  // 2. Call In Progress Modal
   if (callInProgress) {
      return (
         <Modal onClose={handleHangUp} wide={true}>
             <div className="text-center text-[rgb(var(--color-text))]">
                 <h3 className="text-xl font-bold mb-2">
-                    {callInProgress.isCaller && !remoteStream ? 'Ringing' : 'In call with'} {callInProgress.with.display_name}
+                    {callInProgress.isCaller && !remoteStream ? 'Ringing...' : ''} 
+                    {!callInProgress.isCaller || remoteStream ? `In call with ${callInProgress.with.display_name}` : ''}
+                    {callInProgress.isCaller && !remoteStream && <span className="block text-sm font-normal text-[rgb(var(--color-text-secondary))]">Waiting for answer...</span>}
                 </h3>
                 
-                {/* Display Media Errors */}
                 {mediaError && (
-                  <p className="text-red-500 text-sm mb-3">{mediaError}</p>
+                  <p className="text-red-500 text-sm mb-3 bg-red-100 dark:bg-red-900/30 p-2 rounded">{mediaError}</p>
                 )}
                 
-                <div className="relative w-full aspect-video bg-black rounded-lg mb-4">
+                <div className="relative w-full aspect-video bg-black rounded-lg mb-4 overflow-hidden">
                     {/* Remote Video */}
                     <video 
                         ref={el => { if (el) el.srcObject = remoteStream; }} 
@@ -318,7 +319,7 @@ export const Calls = () => {
                         playsInline 
                         className={`w-full h-full object-cover ${!remoteStream ? 'hidden' : ''}`}
                     />
-                    {/* Avatar Fallback */}
+                    {/* Avatar Fallback for Remote */}
                     {!remoteStream && (
                         <div className="absolute inset-0 flex items-center justify-center">
                             <img
@@ -328,14 +329,17 @@ export const Calls = () => {
                             />
                         </div>
                     )}
-                    {/* Local Video */}
-                    <video 
-                        ref={el => { if (el) el.srcObject = localStream; }} 
-                        autoPlay 
-                        playsInline 
-                        muted
-                        className={`absolute bottom-4 right-4 w-32 h-24 rounded-lg object-cover border-2 border-white shadow-lg ${isCamOff || !localStream ? 'hidden' : ''}`}
-                    />
+                    
+                    {/* Local Video (PIP) */}
+                    <div className={`absolute bottom-4 right-4 w-32 h-24 rounded-lg overflow-hidden border-2 border-white shadow-lg bg-black transition-all ${isCamOff || !localStream ? 'hidden' : ''}`}>
+                         <video 
+                            ref={el => { if (el) el.srcObject = localStream; }} 
+                            autoPlay 
+                            playsInline 
+                            muted
+                            className="w-full h-full object-cover"
+                        />
+                    </div>
                 </div>
 
                 {/* Call Controls */}
@@ -369,6 +373,5 @@ export const Calls = () => {
      );
   }
   
-  // 3. No call, render nothing
   return null;
 };

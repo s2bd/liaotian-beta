@@ -64,9 +64,11 @@ export const Feed = () => {
   const [isPostingComment, setIsPostingComment] = useState(false);
 
   // Pagination & Scroll Breaker State
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(0); // Current rendered page index
   const [hasMorePosts, setHasMorePosts] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // const [isLoadingMore, setIsLoadingMore] = useState(false); // REMOVED: Replaced by isPreLoading/preLoadedPosts
+  const [isPreLoading, setIsPreLoading] = useState(false); // NEW: Tracks if the next page is being fetched
+  const [preLoadedPosts, setPreLoadedPosts] = useState<Post[]>([]); // NEW: Stores the posts for the *next* page
   const [scrollProgress, setScrollProgress] = useState(0);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -107,8 +109,13 @@ export const Feed = () => {
     }
   };
 
-  const loadPosts = async (pageIndex = 0) => {
-    if (pageIndex === 0) setIsLoadingMore(false); // Initial load isn't "loading more"
+  // Modified to handle 'append' (initial load) vs 'preload' (background fetch)
+  const loadPosts = async (pageIndex = 0, mode: 'append' | 'preload' = 'append') => {
+    if (mode === 'preload') {
+      if (isPreLoading) return;
+      setIsPreLoading(true);
+      setPreLoadedPosts([]); // Clear previous pre-load attempt
+    }
     
     let query = supabase.from('posts').select('*, profiles(*)').order('created_at', { ascending: false });
     
@@ -134,16 +141,21 @@ export const Feed = () => {
 
     if (loadedPosts.length < POSTS_PER_PAGE) {
       setHasMorePosts(false);
+    } else {
+      setHasMorePosts(true); // Assume more if a full page was loaded
     }
 
-    if (pageIndex === 0) {
+    if (mode === 'append' && pageIndex === 0) { // Only for initial load
       setPosts(loadedPosts);
-    } else {
-      setPosts(prev => [...prev, ...loadedPosts]);
+    } else if (mode === 'preload') { // For background loading the *next* page
+      setPreLoadedPosts(loadedPosts);
     }
     
     fetchUserLikes(loadedPosts);
-    setIsLoadingMore(false);
+
+    if (mode === 'preload') {
+      setIsPreLoading(false);
+    }
   };
 
   // Handle Likes
@@ -223,10 +235,19 @@ export const Feed = () => {
   };
 
   useEffect(() => {
-    // Initial load
-    loadPosts(0);
-
     let channel: RealtimeChannel | undefined;
+
+    // 1. Initial Load & First Pre-load (Only run on mount)
+    if (page === 0 && posts.length === 0) {
+      loadPosts(0, 'append'); // Load current page (0)
+      loadPosts(1, 'preload'); // Immediately pre-load the next page (1)
+    }
+
+    // 2. Auto Pre-load (runs when 'page' is incremented after a reveal)
+    if (hasMorePosts && preLoadedPosts.length === 0 && !isPreLoading && page > 0) {
+        // Pre-load the page *after* the current one.
+        loadPosts(page + 1, 'preload');
+    }
 
     if (ENABLE_REALTIME_SUBSCRIPTION) {
       channel = supabase.channel('public:posts').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async (payload) => {
@@ -258,7 +279,8 @@ export const Feed = () => {
 
     // Logic for "Scroll and Hold" interaction
     const handleScrollInteraction = () => {
-      if (!ENABLE_SCROLL_BREAKER_FEATURE || !hasMorePosts || isLoadingMore) return;
+      // Check if feature is enabled, there are more posts, AND the next batch is PRE-LOADED
+      if (!ENABLE_SCROLL_BREAKER_FEATURE || !hasMorePosts || preLoadedPosts.length === 0) return;
 
       const scrollContainer = document.documentElement;
       // Check if user is at the bottom (with a small buffer)
@@ -269,14 +291,11 @@ export const Feed = () => {
           // Increment progress. Increased speed for better UX.
           const next = prev + 2.5; 
           if (next >= 100) {
-            // Trigger load
-            setIsLoadingMore(true);
-            setPage(p => {
-              const nextPage = p + 1;
-              loadPosts(nextPage);
-              return nextPage;
-            });
-            return 0;
+            // REVEAL LOGIC: Append preLoadedPosts and trigger next pre-load
+            setPosts(current => [...current, ...preLoadedPosts]); // Append pre-loaded posts
+            setPreLoadedPosts([]); // Clear the revealed posts
+            setPage(p => p + 1); // Increment page, which triggers the next pre-load via useEffect
+            return 0; // Reset progress bar
           }
           return next;
         });
@@ -307,7 +326,7 @@ export const Feed = () => {
       }
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
     };
-  }, [user, isExpanded, hasMorePosts, isLoadingMore, page]); // Added necessary deps
+  }, [user, isExpanded, hasMorePosts, page, preLoadedPosts.length, isPreLoading, posts.length]); // Updated dependencies
 
   const createPost = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -497,7 +516,7 @@ export const Feed = () => {
       </div>
 
       <div>
-        {posts.length === 0 && !isLoadingMore && (
+        {posts.length === 0 && !isPreLoading && ( // Updated to use isPreLoading for initial check
           <div className="text-center py-12 text-[rgb(var(--color-text-secondary))]" >
             {FOLLOW_ONLY_FEED ? 'No posts from people you follow yet.' : 'No posts yet. Be the first!'}
           </div>
@@ -616,8 +635,14 @@ export const Feed = () => {
                 style={{ width: `${scrollProgress}%` }}
               />
               <span className="relative z-10 text-sm font-semibold text-[rgb(var(--color-text))] flex items-center gap-2">
-                {isLoadingMore ? <Loader2 size={16} className="animate-spin" /> : null}
-                {isLoadingMore ? 'Loading more...' : 'Scroll and hold to reveal more'}
+                {/* Show spinner if currently pre-loading */}
+                {isPreLoading && preLoadedPosts.length === 0 ? <Loader2 size={16} className="animate-spin" /> : null}
+                {isPreLoading && preLoadedPosts.length === 0 
+                  ? 'Pre-loading next batch...' 
+                  : (preLoadedPosts.length > 0
+                    ? 'Scroll and hold to reveal more' 
+                    : (isPreLoading ? 'Pre-loading next batch...' : 'Fetching initial batch...')) // Fallback for edge cases
+                }
               </span>
             </div>
           )}

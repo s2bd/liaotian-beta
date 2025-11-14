@@ -475,7 +475,7 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
     const loadedPosts = data || [];
     setPosts(loadedPosts);
     fetchUserLikes(loadedPosts); // NEW: Fetch likes for loaded posts
-  }, [targetUserId, fetchUserLikes]);
+  };
   
   // --- NEW: Load Liked Posts ---
   const loadLikedPosts = async () => {

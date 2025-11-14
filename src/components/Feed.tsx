@@ -127,6 +127,36 @@ export const Feed = () => {
     return diff < 300000; // 5 minutes
   };
 
+  const getPostCounts = useCallback(async (postIds: string[]) => {
+    if (!postIds.length) return { likeCounts: {}, commentCounts: {} };
+
+    const [likeRes, commentRes] = await Promise.all([
+      supabase
+        .from('likes')
+        .select('entity_id, count(entity_id)')
+        .eq('entity_type', 'post')
+        .in('entity_id', postIds)
+        .group('entity_id'),
+      supabase
+        .from('comments')
+        .select('post_id, count(post_id)')
+        .in('post_id', postIds)
+        .group('post_id')
+    ]);
+
+    const likeCounts: Record<string, number> = {};
+    likeRes.data?.forEach((row: any) => {
+      likeCounts[row.entity_id] = parseInt(row.count, 10);
+    });
+
+    const commentCounts: Record<string, number> = {};
+    commentRes.data?.forEach((row: any) => {
+      commentCounts[row.post_id] = parseInt(row.count, 10);
+    });
+
+    return { likeCounts, commentCounts };
+  }, []);
+
   const fetchUserLikes = useCallback(async (currentPosts: Post[]) => {
     if (!user || currentPosts.length === 0) return;
     const postIds = currentPosts.map(p => p.id);
@@ -166,14 +196,21 @@ export const Feed = () => {
     const { data } = await query.range(0, POST_PAGE_SIZE - 1);
     
     const loadedPosts = data || [];
-    setPosts(loadedPosts);
+    const postIds = loadedPosts.map(p => p.id);
+    const { likeCounts, commentCounts } = await getPostCounts(postIds);
+    const postsWithCounts = loadedPosts.map(post => ({
+      ...post,
+      like_count: likeCounts[post.id] || 0,
+      comment_count: commentCounts[post.id] || 0,
+    }));
+    setPosts(postsWithCounts);
     
-    if (loadedPosts.length < POST_PAGE_SIZE) {
+    if (postsWithCounts.length < POST_PAGE_SIZE) {
       setHasMorePosts(false);
     }
     
-    fetchUserLikes(loadedPosts);
-  }, [user, fetchUserLikes]);
+    fetchUserLikes(postsWithCounts);
+  }, [user, fetchUserLikes, getPostCounts]);
   
   // --- NEW: Load more posts for infinite scroll
   const loadMorePosts = useCallback(async () => {
@@ -201,16 +238,23 @@ export const Feed = () => {
     const { data } = await query.range(from, to);
     
     const newPosts = data || [];
-    setPosts(current => [...current, ...newPosts]);
+    const newPostIds = newPosts.map(p => p.id);
+    const { likeCounts, commentCounts } = await getPostCounts(newPostIds);
+    const newPostsWithCounts = newPosts.map(post => ({
+      ...post,
+      like_count: likeCounts[post.id] || 0,
+      comment_count: commentCounts[post.id] || 0,
+    }));
+    setPosts(current => [...current, ...newPostsWithCounts]);
     setPostPage(nextPage);
     
     if (newPosts.length < POST_PAGE_SIZE) {
       setHasMorePosts(false);
     }
     
-    fetchUserLikes(newPosts);
+    fetchUserLikes(newPostsWithCounts);
     setIsLoadingMorePosts(false);
-  }, [isLoadingMorePosts, hasMorePosts, postPage, user, fetchUserLikes]);
+  }, [isLoadingMorePosts, hasMorePosts, postPage, user, fetchUserLikes, getPostCounts]);
 
   // Handle Likes - MODIFIED LOGIC
   const handleInitialLike = async (post: Post) => {
@@ -313,11 +357,11 @@ export const Feed = () => {
   useEffect(() => {
     loadPosts();
 
-    const channel = supabase.channel('public:posts').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async (payload) => {
+    const channel = supabase.channel('feed-updates').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async (payload) => {
       if (FOLLOW_ONLY_FEED && user) {
         if (payload.new.user_id === user.id) {
           const { data } = await supabase.from('posts').select('*, profiles(*)').eq('id', payload.new.id).single();
-          if (data) setPosts(current => [data, ...current]);
+          if (data) setPosts(current => [{ ...data, like_count: 0, comment_count: 0 }, ...current]);
           return;
         }
 
@@ -330,7 +374,25 @@ export const Feed = () => {
         if (!followData?.length) return;
       }
       const { data } = await supabase.from('posts').select('*, profiles(*)').eq('id', payload.new.id).single();
-      if (data) setPosts(current => [data, ...current]);
+      if (data) setPosts(current => [{ ...data, like_count: 0, comment_count: 0 }, ...current]);
+    }).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'likes', filter: 'entity_type=eq.post' }, (payload) => {
+      if (payload.new.user_id === user?.id) return;
+      const postId = payload.new.entity_id;
+      setPosts(current => current.map(p =>
+        p.id === postId ? { ...p, like_count: (p.like_count || 0) + 1 } : p
+      ));
+    }).on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'likes', filter: 'entity_type=eq.post' }, (payload) => {
+      if (payload.old.user_id === user?.id) return;
+      const postId = payload.old.entity_id;
+      setPosts(current => current.map(p =>
+        p.id === postId ? { ...p, like_count: Math.max(0, (p.like_count || 0) - 1) } : p
+      ));
+    }).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, (payload) => {
+      if (payload.new.user_id === user?.id) return;
+      const postId = payload.new.post_id;
+      setPosts(current => current.map(p =>
+        p.id === postId ? { ...p, comment_count: (p.comment_count || 0) + 1 } : p
+      ));
     }).subscribe();
 
     return () => {
@@ -652,7 +714,7 @@ export const Feed = () => {
                     >
                       <Heart size={18} fill={likedPostIds.has(post.id) ? "currentColor" : "none"} />
                     </button>
-                    {post.like_count !== undefined && (
+                    {post.like_count > 0 && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); openLikesList(post.id); }}
                         className="text-sm text-[rgb(var(--color-text-secondary))] hover:underline"
@@ -669,7 +731,7 @@ export const Feed = () => {
                     >
                       <MessageCircle size={18} />
                     </button>
-                    {post.comment_count !== undefined && (
+                    {post.comment_count > 0 && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); openCommentsList(post.id); }}
                         className="text-sm text-[rgb(var(--color-text-secondary))] hover:underline"

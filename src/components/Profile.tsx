@@ -231,6 +231,31 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
     return diff < 300000; // 5 minutes
   };
 
+  const getPostCounts = useCallback(async (postIds: string[]) => {
+    if (!postIds.length) return { likeCounts: {}, commentCounts: {} };
+
+    const likeCounts: Record<string, number> = {};
+    const commentCounts: Record<string, number> = {};
+
+    for (const postId of postIds) {
+      const [{ count: likeCount }, { count: commentCount }] = await Promise.all([
+        supabase
+          .from('likes')
+          .select('*', { count: 'exact', head: true })
+          .eq('entity_type', 'post')
+          .eq('entity_id', postId),
+        supabase
+          .from('comments')
+          .select('*', { count: 'exact', head: true })
+          .eq('post_id', postId)
+      ]);
+      likeCounts[postId] = likeCount || 0;
+      commentCounts[postId] = commentCount || 0;
+    }
+
+    return { likeCounts, commentCounts };
+  }, []);
+
   /**
    * Helper function to handle direct upload of files (like GIFs) that don't need cropping.
    */
@@ -474,9 +499,16 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
       .eq('user_id', targetUserId)
       .order('created_at', { ascending: false });
     const loadedPosts = data || [];
-    setPosts(loadedPosts);
-    fetchUserLikes(loadedPosts); // NEW: Fetch likes for loaded posts
-  }, [targetUserId, fetchUserLikes]);
+    const postIds = loadedPosts.map(p => p.id);
+    const { likeCounts, commentCounts } = await getPostCounts(postIds);
+    const postsWithCounts = loadedPosts.map(post => ({
+      ...post,
+      like_count: likeCounts[post.id] || 0,
+      comment_count: commentCounts[post.id] || 0,
+    }));
+    setPosts(postsWithCounts);
+    fetchUserLikes(postsWithCounts); // NEW: Fetch likes for loaded posts
+  }, [targetUserId, fetchUserLikes, getPostCounts]);
   
   // --- NEW: Load Liked Posts ---
   const loadLikedPosts = useCallback(async () => {
@@ -507,14 +539,21 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
       .order('created_at', { ascending: false });
       
     const loadedLikedPosts = postData || [];
-    setLikedPosts(loadedLikedPosts);
+    const newPostIds = loadedLikedPosts.map(p => p.id);
+    const { likeCounts, commentCounts } = await getPostCounts(newPostIds);
+    const likedPostsWithCounts = loadedLikedPosts.map(post => ({
+      ...post,
+      like_count: likeCounts[post.id] || 0,
+      comment_count: commentCounts[post.id] || 0,
+    }));
+    setLikedPosts(likedPostsWithCounts);
     
     // 3. Fetch *our* (the viewing user's) likes for *these* posts
-    fetchUserLikes(loadedLikedPosts);
+    fetchUserLikes(likedPostsWithCounts);
     
     setIsLikesLoaded(true);
     setIsLoadingLikes(false);
-  }, [targetUserId, fetchUserLikes]);
+  }, [targetUserId, fetchUserLikes, getPostCounts]);
 
   const loadFollowStats = useCallback(async () => {
     if (!targetUserId) return;
@@ -554,8 +593,65 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
       loadPosts();
       loadFollowStats();
       if (!isOwnProfile) checkFollowing();
+
+      const channel = supabase.channel(`profile-${targetUserId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async (payload) => {
+        if (payload.new.user_id !== targetUserId) return;
+        const { data } = await supabase.from('posts').select('*, profiles(*)').eq('id', payload.new.id).single();
+        if (data) {
+          const postIds = [data.id];
+          const { likeCounts, commentCounts } = await getPostCounts(postIds);
+          const newPost = {
+            ...data,
+            like_count: likeCounts[data.id] || 0,
+            comment_count: commentCounts[data.id] || 0,
+          };
+          setPosts(current => [newPost, ...current]);
+        }
+      }).on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'posts' }, (payload) => {
+        const postId = payload.old.id;
+        setPosts(current => current.filter(p => p.id !== postId));
+        setLikedPosts(current => current.filter(p => p.id !== postId));
+      }).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'likes', filter: 'entity_type=eq.post' }, async (payload) => {
+        if (payload.new.user_id === targetUserId) {
+          // Add to likedPosts
+          const { data: postData } = await supabase.from('posts').select('*, profiles(*)').eq('id', payload.new.entity_id).single();
+          if (postData) {
+            const postIds = [postData.id];
+            const { likeCounts, commentCounts } = await getPostCounts(postIds);
+            const newPost = {
+              ...postData,
+              like_count: likeCounts[postData.id] || 0,
+              comment_count: commentCounts[postData.id] || 0,
+            };
+            setLikedPosts(current => {
+              if (current.some(p => p.id === newPost.id)) return current; // already there
+              return [newPost, ...current];
+            });
+          }
+        }
+        // Always update count
+        const postId = payload.new.entity_id;
+        setPosts(current => current.map(p => p.id === postId ? { ...p, like_count: (p.like_count || 0) + 1 } : p));
+        setLikedPosts(current => current.map(p => p.id === postId ? { ...p, like_count: (p.like_count || 0) + 1 } : p));
+      }).on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'likes', filter: 'entity_type=eq.post' }, (payload) => {
+        if (payload.old.user_id === targetUserId) {
+          setLikedPosts(current => current.filter(p => p.id !== payload.old.entity_id));
+        }
+        // Update count
+        const postId = payload.old.entity_id;
+        setPosts(current => current.map(p => p.id === postId ? { ...p, like_count: Math.max(0, (p.like_count || 0) - 1) } : p));
+        setLikedPosts(current => current.map(p => p.id === postId ? { ...p, like_count: Math.max(0, (p.like_count || 0) - 1) } : p));
+      }).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, (payload) => {
+        const postId = payload.new.post_id;
+        setPosts(current => current.map(p => p.id === postId ? { ...p, comment_count: (p.comment_count || 0) + 1 } : p));
+        setLikedPosts(current => current.map(p => p.id === postId ? { ...p, comment_count: (p.comment_count || 0) + 1 } : p));
+      }).subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
-  }, [targetUserId, isOwnProfile, loadProfile, loadPosts, loadFollowStats, checkFollowing]);
+  }, [targetUserId, isOwnProfile, loadProfile, loadPosts, loadFollowStats, checkFollowing, getPostCounts]);
 
   const loadFollowers = async () => {
     const { data } = await supabase
@@ -932,7 +1028,7 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
           )}
         </div>
       </div>
-      
+
       {/* --- TABS START --- */}
       <div className="flex border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] sticky top-0 z-30">
         <button 
@@ -1031,7 +1127,7 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
                                 )}
                               </div>
                             )}
-                    
+
                     {/* NEW: Action Bar (Likes and Comments) */}
                     <div className="flex items-center gap-6 mt-3">
                         <div className="flex items-center gap-1 group">
@@ -1111,7 +1207,7 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
             ))}
           </div>
         )}
-        
+
         {/* --- MEDIA TAB CONTENT --- */}
         {activeTab === 'media' && (
           <div>
@@ -1142,7 +1238,7 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
             )}
           </div>
         )}
-        
+
         {/* --- LIKES TAB CONTENT --- */}
         {activeTab === 'likes' && (
           <div>
@@ -1151,11 +1247,11 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
                 <div className="w-8 h-8 border-4 border-[rgb(var(--color-accent))] border-t-transparent rounded-full animate-spin"></div>
               </div>
             )}
-            
+
             {!isLoadingLikes && isLikesLoaded && likedPosts.length === 0 && (
               <div className="text-center p-8 text-[rgb(var(--color-text-secondary))]">This user hasn't liked any posts yet.</div>
             )}
-            
+
             {!isLoadingLikes && isLikesLoaded && likedPosts.map((post) => (
               <div key={post.id} className="border-b border-[rgb(var(--color-border))] p-4 hover:bg-[rgb(var(--color-surface-hover))] transition bg-[rgb(var(--color-surface))]">
                 <div className="flex gap-4 items-start">

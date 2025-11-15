@@ -2,7 +2,7 @@
 easy-to-host social platforms for everyone
 
 ```
-Current version: 1.0.7C
+Current version: 1.0.7D
 ```
 
 ### What makes LiaoTian (LT) so special from already existing social media/networking platforms?
@@ -50,9 +50,20 @@ If you just want to create an account on **LiaoTian** (our official deployment) 
 - [ ] Create and manage groups
 - [ ] Posting long-form content, e.g. blogs
 - [ ] Notification system (with "clear all" button to easily clear from database, too)
-- [ ] Groupchats
 - [ ] Hashtags
 - [ ] Custom sounds, e.g. notifications, clicks, etc.
+- [ ] Reactions for messages
+- [ ] Voice messages
+- [ ] Gaming mode (color-changing RGB background)
+- [ ] Sending GIFs via Tenor/Giphy
+- [ ] Privacy settings for posts + "emergency profile shutdown" option to temporarily make only posts have "only me" level privacy.
+- [ ] Groupchat functionality with 2 modes - singular channel (like WhatsApp, Messenger, Telegram) or multi channel (like Discord, Slack, Matrix).
+- [ ] Add Discord-like activity detection for desktop client by identifying window titles or otherwise, for showing what game users are currently playing, etc.
+- [ ] Add more sidebars for navigation to further secondary sections (Discover, Groups, Users, Trends).
+- [ ] IG status/story (combine with the chat bubble thing floating above the avatar ring)
+- [ ] Link-in-bio builder
+- [ ] Live streaming (from story? like early IG?)
+
 
 
 ## 🚨 Current flaws

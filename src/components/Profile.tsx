@@ -917,9 +917,8 @@ export const Profile = ({ userId, onMessage, onSettings }: { userId?: string; on
     // 1. Set URL
     window.history.replaceState({}, '', `/message?${profile.username}`);
 
-    // 2. Trigger BOTH: App.tsx handler + direct open in Messages
+    // 2. Trigger App.tsx handler (which will set view and dispatch event)
     onMessage?.(profile);
-    window.dispatchEvent(new CustomEvent('openDirectMessage', { detail: profile }));
   }}
   className="flex items-center gap-2 px-5 py-2.5 bg-[rgb(var(--color-accent))] text-[rgb(var(--color-text-on-primary))] rounded-full hover:bg-[rgb(var(--color-primary))] transition font-medium"
 >

@@ -451,8 +451,9 @@ export const Messages = () => {
 
         recorder.onstop = () => {
           const mimeType = recorder.mimeType || 'audio/webm';
+          const cleanExt = mimeType.split('/')[1]?.split(';')[0] || 'weba';
           const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-          const audioFile = new File([audioBlob], `voice-message.${mimeType.split('/')[1] || 'webm'}`, { type: mimeType });
+          const audioFile = new File([audioBlob], `voice-message.${cleanExt}`, { type: mimeType });
           
           setFile(audioFile); // This will trigger the preview
           setIsRecording(false);

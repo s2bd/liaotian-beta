@@ -8,10 +8,11 @@ import { Profile } from './components/Profile';
 import { Search } from './components/Search';
 import { Settings } from './components/Settings';
 import { CustomPage } from './components/CustomPage';
+import { Stats } from './components/Stats';
 import { Home, MessageSquare, User, LogOut, Search as SearchIcon } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
-import { Stats } from './components/Stats';
+import { Analytics } from '@vercel/analytics/react';
 
 type ViewType = 'feed' | 'messages' | 'profile' | 'settings' | 'page' | 'stats'; 
 

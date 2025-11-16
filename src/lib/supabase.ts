@@ -24,7 +24,7 @@ export type Post = {
   user_id: string;
   content: string;
   media_url: string;
-  media_type: 'image' | 'video' | 'document';
+  media_type: 'image' | 'video' | 'document' | 'audio';
   created_at: string;
   profiles?: Profile;
 };
@@ -35,7 +35,7 @@ export type Message = {
   recipient_id: string;
   content: string;
   media_url: string;
-  media_type: 'image' | 'video' | 'document';
+  media_type: 'image' | 'video' | 'document' | 'audio';
   read: boolean;
   created_at: string;
   sender?: Profile;
@@ -61,11 +61,20 @@ export const uploadMedia = async (
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
   const validImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg','bmp'];
   const validVideo = ['mp4', 'webm', 'mov', 'avi'];
-  const validDoc = ['pdf', 'doc', 'docx', 'txt', 'json','rtf','exe','zip','mp3','ogg','wav'];
+  const validAudio = ['mp3', 'weba', 'ogg', 'wav', 'm4a'];
+  const validDoc = ['pdf', 'doc', 'docx', 'txt', 'json','rtf','exe','zip'];
 
   let type: string;
   if (validImage.includes(ext)) type = 'image';
-  else if (validVideo.includes(ext)) type = 'video';
+  else if (validVideo.includes(ext)) {
+    // Handle webm, which can be audio or video
+    if (ext === 'webm' && file.type.startsWith('audio/')) {
+      type = 'audio';
+    } else {
+      type = 'video';
+    }
+  }
+  else if (validAudio.includes(ext)) type = 'audio';
   else if (validDoc.includes(ext)) type = 'document';
   else {
     alert('Unsupported file type');

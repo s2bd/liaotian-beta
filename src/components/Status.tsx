@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase, uploadStatusMedia, Profile, Status } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { X, Plus, Camera, Video, Image as ImageIcon, Edit3, Menu, ChevronLeft, ChevronRight, Clock, Archive, MessageSquare } from 'lucide-react';
+import { X, Plus, Camera, Video, Image as ImageIcon, Edit3, Menu, ChevronLeft, ChevronRight, Clock, Archive, MessageSquare, User } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const FOLLOW_ONLY_FEED = import.meta.env.VITE_FOLLOW_ONLY_FEED === 'true';

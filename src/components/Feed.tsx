@@ -641,9 +641,9 @@ export const Feed = () => {
 
   return (
     <div className="max-w-2xl mx-auto">
+      {activeTab === 'posts' && <StatusTray />}
       {/* COMPOSER - Only visible when Posts tab is active */}
       {activeTab === 'posts' && (
-      <StatusTray />
       <div ref={scrollRef} className="bg-[rgb(var(--color-surface))] border-b border-[rgb(var(--color-border))] shadow-sm">
         {isExpanded ? (
           <form onSubmit={createPost} className="p-4 space-y-3">

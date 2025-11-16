@@ -13,7 +13,7 @@ import { Home, MessageSquare, User, LogOut, Search as SearchIcon } from 'lucide-
 import { supabase } from './lib/supabase';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
-import { StatusSidebar, StatusArchive } from './components/Status';
+import { StatusSidebar, StatusArchive, Status } from './components/Status';
 
 type ViewType = 'feed' | 'messages' | 'profile' | 'settings' | 'page' | 'stats' | 'archive';
 
@@ -25,6 +25,7 @@ const Main = () => {
   const [pageSlug, setPageSlug] = useState<string>('');
   const [selectedProfileId, setSelectedProfileId] = useState<string | undefined>();
   const [showSearch, setShowSearch] = useState(false);
+  const isMobile = window.innerWidth < 768;
   const [showSidebar, setShowSidebar] = useState(false);
   const { user, profile, loading, signOut } = useAuth();
   const location = useLocation();
@@ -319,101 +320,116 @@ if (loading) {
     setSelectedProfileId(undefined);
   };
 
-  return (
-    <div className="min-h-screen bg-[rgb(var(--color-background))]">
-      <nav className="bg-[rgb(var(--color-surface))] border-b border-[rgb(var(--color-border))] sticky top-0 z-50 shadow-sm">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14">
-          <h1 className="text-l font-black bg-gradient-to-r from-[rgba(var(--color-primary),1)] via-[rgba(var(--color-accent),1)] to-[rgba(var(--color-primary),1)] bg-clip-text text-transparent">
-            Liaoverse
-          </h1>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowSearch(true)}
-              className="p-3 rounded-full hover:bg-[rgb(var(--color-surface-hover))] transition"
+    return (
+    <div className={`flex min-h-screen bg-[rgb(var(--color-background))] ${isMobile ? '' : 'flex-row'}`}>
+      {!isMobile && (
+        <StatusSidebar 
+          show={true} 
+          onClose={() => {}} 
+          setView={setView}
+          view={view}
+        />
+      )}
+      <div className="flex-1 flex flex-col min-w-0">
+        <nav className="bg-[rgb(var(--color-surface))] border-b border-[rgb(var(--color-border))] sticky top-0 z-50 shadow-sm flex-shrink-0">
+          <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14">
+            <h1 
+              onClick={() => setShowSidebar(!showSidebar)} 
+              className="text-l font-black bg-gradient-to-r from-[rgba(var(--color-primary),1)] via-[rgba(var(--color-accent),1)] to-[rgba(var(--color-primary),1)] bg-clip-text text-transparent cursor-pointer sm:cursor-default sm:pointer-events-none"
             >
-              <SearchIcon size={24} className="text-[rgb(var(--color-text-secondary))]" />
-            </button>
-            <button
-              onClick={() => {
-                setView('feed');
-                setSelectedProfileId(undefined);
-                navigate('/');
-              }}
-              className={`p-3 rounded-full transition ${
-                view === 'feed' ? 'bg-[rgba(var(--color-primary),0.1)] text-[rgb(var(--color-primary))]' : 'hover:bg-[rgb(var(--color-surface-hover))]'
-              }`}
-            >
-              <Home size={24} />
-            </button>
-            <button
-              onClick={() => {
-                setView('messages');
-                setSelectedProfileId(undefined);
-                navigate('/message'); // Navigate to /message base
-              }}
-              className={`p-3 rounded-full transition ${
-                view === 'messages' ? 'bg-[rgba(var(--color-primary),0.1)] text-[rgb(var(--color-primary))]' : 'hover:bg-[rgb(var(--color-surface-hover))]'
-              }`}
-            >
-              <MessageSquare size={24} />
-            </button>
-            <button
-              onClick={() => {
-                if (!profile?.username) return;
-                navigate(`/?${profile.username}`);
-                setSelectedProfileId(undefined);
-                setView('profile');
-              }}
-              className={`p-3 rounded-full transition ${
-                view === 'profile' && !selectedProfileId
-                  ? 'bg-[rgba(var(--color-primary),0.1)] text-[rgb(var(--color-primary))]'
-                  : 'hover:bg-[rgb(var(--color-surface-hover))]'
-              }`}
-            >
-              <User size={24} />
-            </button>
-            <button
-              onClick={signOut}
-              className="p-3 rounded-full hover:bg-[rgba(239,68,68,0.1)] text-red-600 transition"
-            >
-              <LogOut size={24} />
-            </button>
+              Liaoverse
+            </h1>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowSearch(true)}
+                className="p-3 rounded-full hover:bg-[rgb(var(--color-surface-hover))] transition"
+              >
+                <SearchIcon size={24} className="text-[rgb(var(--color-text-secondary))]" />
+              </button>
+              <button
+                onClick={() => {
+                  setView('feed');
+                  setSelectedProfileId(undefined);
+                  navigate('/');
+                }}
+                className={`p-3 rounded-full transition ${
+                  view === 'feed' ? 'bg-[rgba(var(--color-primary),0.1)] text-[rgb(var(--color-primary))]' : 'hover:bg-[rgb(var(--color-surface-hover))]'
+                }`}
+              >
+                <Home size={24} />
+              </button>
+              <button
+                onClick={() => {
+                  setView('messages');
+                  setSelectedProfileId(undefined);
+                  navigate('/message'); // Navigate to /message base
+                }}
+                className={`p-3 rounded-full transition ${
+                  view === 'messages' ? 'bg-[rgba(var(--color-primary),0.1)] text-[rgb(var(--color-primary))]' : 'hover:bg-[rgb(var(--color-surface-hover))]'
+                }`}
+              >
+                <MessageSquare size={24} />
+              </button>
+              <button
+                onClick={() => {
+                  if (!profile?.username) return;
+                  navigate(`/?${profile.username}`);
+                  setSelectedProfileId(undefined);
+                  setView('profile');
+                }}
+                className={`p-3 rounded-full transition ${
+                  view === 'profile' && !selectedProfileId
+                    ? 'bg-[rgba(var(--color-primary),0.1)] text-[rgb(var(--color-primary))]'
+                    : 'hover:bg-[rgb(var(--color-surface-hover))]'
+                }`}
+              >
+                <User size={24} />
+              </button>
+              <button
+                onClick={signOut}
+                className="p-3 rounded-full hover:bg-[rgba(239,68,68,0.1)] text-red-600 transition"
+              >
+                <LogOut size={24} />
+              </button>
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
 
-	 <StatusSidebar 
-        show={showSidebar} 
-        onClose={() => setShowSidebar(false)} 
-        setView={setView}
-        view={view}
-      />
-
-      <main className="h-[90vh] overflow-auto md:ml-64 transition-all duration-300">
-        {view === 'feed' && <Feed />}
-        {view === 'messages' && <Messages />}
-        {view === 'profile' && (
-          <Profile
-            userId={selectedProfileId}
-            onMessage={handleMessageUser}
-            onSettings={
-              !selectedProfileId || selectedProfileId === user.id ? handleSettings : undefined
-            }
+        {isMobile && (
+          <StatusSidebar 
+            show={showSidebar} 
+            onClose={() => setShowSidebar(false)} 
+            setView={setView}
+            view={view}
           />
         )}
-        {view === 'settings' && <Settings />}
-        {showSearch && <Search onClose={() => setShowSearch(false)} />}
-        {view === 'stats' && user && <Stats />}
-		{view === 'archive' && <StatusArchive />}
-      </main>
-      {view !== 'messages' && view !== 'archive' && (
-        <footer className="text-center text-[rgb(var(--color-text-secondary))] text-xs py-4 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))]">
-          © Mux {new Date().getFullYear()}
-        </footer>
-       )}
+
+        <main className="h-[90vh] overflow-auto flex-1">
+          {view === 'feed' && <Feed />}
+          {view === 'messages' && <Messages />}
+          {view === 'profile' && (
+            <Profile
+              userId={selectedProfileId}
+              onMessage={handleMessageUser}
+              onSettings={
+                !selectedProfileId || selectedProfileId === user.id ? handleSettings : undefined
+              }
+            />
+          )}
+          {view === 'settings' && <Settings />}
+          {showSearch && <Search onClose={() => setShowSearch(false)} />}
+          {view === 'stats' && user && <Stats />}
+          {view === 'archive' && <StatusArchive />}
+        </main>
+        {view !== 'messages' && view !== 'archive' && (
+          <footer className="text-center text-[rgb(var(--color-text-secondary))] text-xs py-4 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))] flex-shrink-0">
+            © Mux {new Date().getFullYear()}
+          </footer>
+        )}
+      </div>
+      <Status />
     </div>
   );
-};
 
 function App() {
   return (

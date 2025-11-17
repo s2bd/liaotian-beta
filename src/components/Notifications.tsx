@@ -1,8 +1,9 @@
 // src/components/Notifications.tsx
+
 import { useEffect, useState } from 'react';
 import { supabase, Profile } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { X, Heart, MessageCircle, UserPlus, Zap, Trash2 } from 'lucide-react'; // Added Trash2
+import { X, Heart, MessageCircle, UserPlus, Zap, Trash2 } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 
 // 1. Define the TypeScript type for a Notification, based on the proposed schema
@@ -61,11 +62,11 @@ export const Notifications = ({ onClose }: { onClose: () => void }) => {
     setLoading(true);
 
     const fetchNotifications = async () => {
+      // FIX: Removed internal comment from the select string.
       const { data, error } = await supabase
         .from('notifications')
         .select(`
           *,
-          // FIX: Specify relationship to avoid PGRST201 ambiguity error.
           actor:profiles!notifications_actor_id_fkey (username, display_name, avatar_url)
         `)
         .eq('recipient_id', user.id)
@@ -74,7 +75,6 @@ export const Notifications = ({ onClose }: { onClose: () => void }) => {
         .limit(50);
 
       if (error) {
-        // Console error will now show the correct profile name 'actor' in the query if any issue occurs
         console.error('Error fetching notifications:', error); 
       } else {
         setNotifications((data as Notification[]) || []);
@@ -150,8 +150,11 @@ export const Notifications = ({ onClose }: { onClose: () => void }) => {
   };
   
   const handleNotificationClick = (notif: Notification) => {
+    // 1. Mark notification as read in the UI
     if (!notif.is_read) {
         setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+        // 2. Update status in database (optional, this will happen eventually via the channel listener on the update)
+        // supabase.from('notifications').update({ is_read: true }).eq('id', notif.id).match({ recipient_id: user.id });
     }
     
     onClose();

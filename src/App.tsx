@@ -130,18 +130,27 @@ const Main = () => {
 
   }, [user]);
 
-  // === URL PROFILE LOOKUP (via ?username) ===
+  // === URL PROFILE LOOKUP (via ?username, /user?username, and NEW: ?user={username}) ===
   useEffect(() => {
     const checkUrlForProfile = async () => {
       const search = window.location.search;
-      const username = search.startsWith('?') ? search.slice(1) : search;
-      
-      // Path check to allow /?username and /user?username
       const path = window.location.pathname;
-      if (path !== '/' && path !== '/user') {
-          return; // Let page routing handle other paths
+      let username: string | null = null;
+      
+      // Case 1: /?username or /user?username
+      if (path === '/' || path === '/user') {
+          // If search is '?username'
+          if (search.startsWith('?') && !search.includes('=')) {
+              username = search.slice(1);
+          }
       }
 
+      // Case 2: /?user={username} (handles optional trailing '&' or other query params)
+      const userParamMatch = search.match(/\?user=([^&]+)/);
+      if (userParamMatch) {
+        username = userParamMatch[1];
+      }
+      
       if (!username || username.includes('/')) {
         // If no username or invalid format, just return.
         // The other useEffect will handle setting view to 'feed'.
@@ -176,7 +185,21 @@ const Main = () => {
     
     // Check for profile paths (/ and /user)
     if (path === '/' || path === '/user') {
-        const username = search.startsWith('?') ? search.slice(1) : search;
+        const usernameQuery = search.startsWith('?') ? search.slice(1) : search;
+        
+        // Check for ?user={username} format
+        let username = null;
+        if (usernameQuery && !usernameQuery.includes('=')) {
+            // ?username format
+            username = usernameQuery;
+        } else if (usernameQuery.startsWith('user=')) {
+            // ?user={username} format, strip everything after '&'
+            const userMatch = usernameQuery.match(/^user=([^&]+)/);
+            if (userMatch) {
+                username = userMatch[1];
+            }
+        }
+        
         // If a username is present, the Profile lookup useEffect will handle it.
         // We just need to ensure we don't clobber it by setting view to 'feed'.
         if (username && !username.includes('/')) {

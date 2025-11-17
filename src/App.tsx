@@ -14,8 +14,7 @@ import { supabase } from './lib/supabase';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import { StatusSidebar, StatusArchive, Status } from './components/Status';
-// You will need to create this component to show the list of notifications
-// import { Notifications } from './components/Notifications'; 
+import { Notifications } from './components/Notifications'; 
 
 type ViewType = 'feed' | 'messages' | 'profile' | 'settings' | 'page' | 'stats'; 
 
@@ -529,8 +528,7 @@ if (loading) {
         )}
         {view === 'settings' && <Settings />}
         
-        {/* You will need to create and render a <Notifications /> modal component */}
-        {/* {showNotifications && <Notifications onClose={() => setShowNotifications(false)} />} */}
+        {showNotifications && <Notifications onClose={() => setShowNotifications(false)} />}
         
         {showSearch && <Search onClose={() => setShowSearch(false)} />}
         {view === 'stats' && user && <Stats />}

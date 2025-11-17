@@ -405,7 +405,7 @@ if (loading) {
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox={SVG_VIEWBOX}
-                className="w-[26px] h-[26px] cursor-pointer"
+                className="w-[32px] h-[32px] cursor-pointer"
                 onClick={() => navigate('/')}
               >
                 <path

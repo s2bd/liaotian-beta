@@ -32,6 +32,19 @@ CREATE TABLE public.gazebo_channels (
   CONSTRAINT gazebo_channels_pkey PRIMARY KEY (id),
   CONSTRAINT gazebo_channels_gazebo_id_fkey FOREIGN KEY (gazebo_id) REFERENCES public.gazebos(id)
 );
+CREATE TABLE public.gazebo_invites (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  gazebo_id uuid NOT NULL,
+  invite_code text NOT NULL UNIQUE,
+  created_by_user_id uuid,
+  expires_at timestamp with time zone,
+  max_uses integer,
+  uses_count integer DEFAULT 0,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT gazebo_invites_pkey PRIMARY KEY (id),
+  CONSTRAINT gazebo_invites_gazebo_id_fkey FOREIGN KEY (gazebo_id) REFERENCES public.gazebos(id),
+  CONSTRAINT gazebo_invites_created_by_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.profiles(id)
+);
 CREATE TABLE public.gazebo_members (
   gazebo_id uuid NOT NULL,
   user_id uuid NOT NULL,

@@ -29,6 +29,15 @@ export type Post = {
   profiles?: Profile;
 };
 
+export type MessageReaction = {
+  id: string;
+  message_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+  profiles?: Profile; // For joining/fetching the user who reacted
+};
+
 export type Message = {
   id: string;
   sender_id: string;
@@ -40,6 +49,7 @@ export type Message = {
   created_at: string;
   sender?: Profile;
   recipient?: Profile;
+  reactions?: MessageReaction[];
 };
 
 export type Status = {
@@ -93,6 +103,7 @@ export type GazeboMessage = {
   created_at: string;
   sender?: Profile; // We will join this manually or via view
   reply_to?: GazeboMessage | null;
+  reactions?: MessageReaction[];
 };
 
 // === STORAGE HELPERS ===

@@ -1,12 +1,14 @@
 // src/components/Gazebos.tsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, Profile, Gazebo, GazeboChannel, GazeboMessage, uploadMedia } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import Peer from 'peerjs';
 import {
   Hash, Volume2, Plus, Settings, Users, X, Send, Paperclip, Mic, Link as LinkIcon,
-  Trash2, Edit3, Check, Copy, Crown, Shield, ChevronDown, Menu,
+  Trash2, Edit3, Copy, Crown, Shield, ChevronDown, Menu,
   FileText, LogOut, Image as ImageIcon, Play, Pause,
-  PhoneOff, UserMinus, ShieldAlert, CornerUpLeft, LogIn
+  PhoneOff, UserMinus, ShieldAlert, CornerUpLeft, Video
 } from 'lucide-react';
 
 // --- Types ---
@@ -38,6 +40,13 @@ type AppGazeboMessage = GazeboMessage & {
         media_type?: string;
         sender?: { display_name: string }
     } | null;
+};
+
+type VoicePeer = {
+    peerId: string; // The PeerJS ID (user_id + '-voice')
+    userId: string;
+    stream?: MediaStream;
+    call?: Peer.MediaConnection;
 };
 
 // --- AudioPlayer Helper ---
@@ -105,6 +114,7 @@ const formatDateHeader = (dateString: string) => {
 // --- Main Component ---
 export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }: GazebosProps) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   
   // Data State
   const [gazebos, setGazebos] = useState<Gazebo[]>([]);
@@ -123,7 +133,6 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
   // UI State
   const [mobileView, setMobileView] = useState<'servers' | 'channels' | 'chat'>('servers');
   const [showMembersPanel, setShowMembersPanel] = useState(true);
-  const [voiceConnected, setVoiceConnected] = useState<{channelId: string, name: string} | null>(null);
   
   // Modal/Overlay States
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -149,11 +158,21 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
   const [mediaInputMode, setMediaInputMode] = useState<'file' | 'url' | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
+  // Creation & Icon State
+  const [newGazeboIcon, setNewGazeboIcon] = useState<string | null>(null);
+
+  // Voice State
+  const [voiceConnected, setVoiceConnected] = useState<{channelId: string, name: string} | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [peers, setPeers] = useState<Record<string, VoicePeer>>({}); // peerId -> VoicePeer
+  
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const voicePeerRef = useRef<Peer | null>(null);
+  const voicePresenceRef = useRef<any>(null);
 
   // Derived State
   const isOwner = activeGazebo?.owner_id === user?.id;
@@ -199,8 +218,14 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
         const { data: cData } = await supabase.from('gazebo_channels').select('*').eq('gazebo_id', activeGazebo.id).order('created_at');
         setChannels(cData || []);
         
-        if (window.innerWidth > 768 && !activeChannel) {
-            setActiveChannel(cData?.find(c => c.type === 'text') || null);
+        // Auto-pick default channel
+        if (cData && cData.length > 0) {
+            // Prefer text channel, else first available
+            const defaultCh = cData.find(c => c.type === 'text') || cData[0];
+            // Only switch if we aren't already on a valid channel for this server
+            if (!activeChannel || activeChannel.gazebo_id !== activeGazebo.id) {
+               setActiveChannel(defaultCh);
+            }
         }
 
         const { data: mData } = await supabase.from('gazebo_members').select('user_id, role, profiles(*)').eq('gazebo_id', activeGazebo.id);
@@ -220,6 +245,114 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
 
     return () => { supabase.removeChannel(channelSub); };
   }, [activeGazebo?.id]);
+
+  // --- Voice Channel Logic (PeerJS Mesh) ---
+  useEffect(() => {
+    // Cleanup function for previous voice connection
+    return () => {
+        if (voicePeerRef.current) {
+            voicePeerRef.current.destroy();
+            voicePeerRef.current = null;
+        }
+        if (localStream) {
+            localStream.getTracks().forEach(t => t.stop());
+        }
+        if (voicePresenceRef.current) {
+            voicePresenceRef.current.unsubscribe();
+        }
+    };
+  }, []); // Run once on mount/unmount generally, specific logic below
+
+  useEffect(() => {
+      if (!voiceConnected || !user) {
+          // If disconnected, clean up
+          if (voicePeerRef.current) {
+              voicePeerRef.current.destroy();
+              voicePeerRef.current = null;
+          }
+          if (localStream) {
+              localStream.getTracks().forEach(t => t.stop());
+              setLocalStream(null);
+          }
+          setPeers({});
+          return;
+      }
+
+      const initVoice = async () => {
+          try {
+              const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+              setLocalStream(stream);
+
+              // Create Peer with a scoped ID to avoid conflict with global Calls
+              const myPeerId = `${user.id}-voice`;
+              const peer = new Peer(myPeerId);
+              voicePeerRef.current = peer;
+
+              peer.on('open', () => {
+                  // Join Presence Channel
+                  const channel = supabase.channel(`voice:${voiceConnected.channelId}`);
+                  voicePresenceRef.current = channel;
+
+                  channel.on('presence', { event: 'sync' }, () => {
+                      const state = channel.presenceState();
+                      const presentUsers = Object.values(state).flat() as any[];
+                      
+                      // Find users who are NOT me
+                      presentUsers.forEach((u: any) => {
+                          if (u.peerId !== myPeerId && !peers[u.peerId]) {
+                              // Simple mesh strategy: 
+                              // Call if my ID > their ID to avoid double calling, OR call everyone and let PeerJS handle busy state?
+                              // Better: Just call everyone not connected. PeerJS usually handles duplicate connection attempts or we check state.
+                              // For simplicity: Sort IDs. The one with higher string ID calls the lower one.
+                              if (myPeerId > u.peerId) {
+                                  const call = peer.call(u.peerId, stream);
+                                  handlePeerCall(call, u.peerId, u.user_id);
+                              }
+                          }
+                      });
+                  }).subscribe(async (status) => {
+                      if (status === 'SUBSCRIBED') {
+                          await channel.track({ user_id: user.id, peerId: myPeerId });
+                      }
+                  });
+              });
+
+              // Answer incoming calls
+              peer.on('call', (call) => {
+                  call.answer(stream);
+                  // Extract user ID from peer ID (format: userid-voice)
+                  const callerUserId = call.peer.replace('-voice', '');
+                  handlePeerCall(call, call.peer, callerUserId);
+              });
+
+              peer.on('error', (err) => console.error('Voice Peer Error:', err));
+
+          } catch (err) {
+              console.error("Failed to join voice:", err);
+              setVoiceConnected(null);
+              alert("Could not access microphone.");
+          }
+      };
+
+      initVoice();
+
+  }, [voiceConnected, user]);
+
+  const handlePeerCall = (call: Peer.MediaConnection, peerId: string, userId: string) => {
+      call.on('stream', (remoteStream) => {
+          setPeers(prev => ({
+              ...prev,
+              [peerId]: { peerId, userId, stream: remoteStream, call }
+          }));
+      });
+      call.on('close', () => {
+          setPeers(prev => {
+              const newPeers = { ...prev };
+              delete newPeers[peerId];
+              return newPeers;
+          });
+      });
+  };
 
   // --- Chat Messages & Subs ---
   useEffect(() => {
@@ -280,7 +413,6 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
 
       if (!data) { setIsLoadingMore(false); return; }
 
-      // Fetch replies for this batch
       const replyIds = data.map(m => m.reply_to_id).filter(Boolean);
       let repliesMap: any = {};
       if (replyIds.length > 0) {
@@ -289,7 +421,6 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
             .select('id, content, user_id, media_type')
             .in('id', replyIds);
           
-          // Helper to fetch display names for replies (optimization: could be joined or cached)
           if (replies) {
              for (let r of replies) {
                  const { data: rs } = await supabase.from('profiles').select('display_name').eq('id', r.user_id).single();
@@ -329,6 +460,21 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
 
   // --- Actions ---
 
+  const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'create' | 'update') => {
+     const file = e.target.files?.[0];
+     if (!file) return;
+     
+     // Use uploadMedia from supabase.ts
+     const result = await uploadMedia(file, 'profiles'); // Reuse profiles or use a generic bucket if available
+     if (result && result.url) {
+         if (target === 'create') {
+             setNewGazeboIcon(result.url);
+         } else if (target === 'update' && activeGazebo) {
+             updateGazebo({ icon_url: result.url });
+         }
+     }
+  };
+
   const handleInviteJoin = async (code: string) => {
       if (!user || !code) return null;
       const { data: inv } = await supabase.from('gazebo_invites').select('*, gazebos(*)').eq('invite_code', code).single();
@@ -349,7 +495,6 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
               return g;
           }
       } else {
-          // Already member
           if(!gazebos.find(gz => gz.id === g.id)) setGazebos(prev => [...prev, g]);
           setActiveGazebo(g);
           setMobileView('channels');
@@ -363,7 +508,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
       if (!name.trim() || !user) return;
       const { data: g } = await supabase.from('gazebos').insert({
           name: name.trim(), type: 'group', owner_id: user.id,
-          icon_url: `https://ui-avatars.com/api/?name=${name}&background=random`
+          icon_url: newGazeboIcon || `https://ui-avatars.com/api/?name=${name}&background=random`
       }).select().single();
       
       if (g) {
@@ -374,10 +519,10 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
           if (c) setActiveChannel(c);
           setShowCreateGazeboModal(false);
           setShowJoinCreateModal(false);
+          setNewGazeboIcon(null);
       }
   };
 
-  // ... [Rest of updateGazebo, deleteGazebo, moderation functions same as before] ...
   const updateGazebo = async (updates: Partial<Gazebo>) => {
       if (!activeGazebo || !isAdmin) return;
       const { data } = await supabase.from('gazebos').update(updates).eq('id', activeGazebo.id).select().single();
@@ -505,10 +650,19 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
   };
 
   const getPreview = () => {
-      if (!file && !remoteUrl) return null;
-      const src = file ? URL.createObjectURL(file) : remoteUrl;
-      if (file?.type.startsWith('image') || remoteUrl.match(/\.(jpg|png|gif|webp)$/)) return <img src={src} className="h-20 rounded" />;
-      return <div className="bg-[rgb(var(--color-surface-hover))] p-2 rounded text-sm flex items-center gap-2"><FileText size={16} /> Attached Media</div>;
+      if (file) {
+        const url = URL.createObjectURL(file);
+        if (file.type.startsWith('image/')) return <img src={url} className="max-h-20 rounded" />;
+        return <div className="flex items-center gap-2 text-sm"><FileText size={16} /> {file.name}</div>;
+      }
+      if (remoteUrl) {
+          // Simple check for image URL extension
+          if (remoteUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
+              return <img src={remoteUrl} className="max-h-20 rounded" />;
+          }
+          return <div className="flex items-center gap-2 text-sm"><LinkIcon size={16} /> {remoteUrl}</div>;
+      }
+      return null;
   };
 
   const isMobile = window.innerWidth <= 768;
@@ -573,6 +727,12 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                    >
                        <Volume2 size={18} />
                        <span>{c.name}</span>
+                       {voiceConnected?.channelId === c.id && (
+                           <div className="flex -space-x-1 ml-auto">
+                               <img src={user?.user_metadata.avatar_url} className="w-4 h-4 rounded-full border border-[rgb(var(--color-surface))]" />
+                               {/* Visual for other peers in voice would theoretically go here if we tracked presence per channel strictly */}
+                           </div>
+                       )}
                    </div>
               ))}
           </div>
@@ -584,10 +744,14 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                           <span className="text-green-500 text-xs font-bold">Voice Connected</span>
                           <span className="text-xs text-[rgb(var(--color-text-secondary))]">{voiceConnected.name} / {activeGazebo?.name}</span>
                       </div>
-                      <button onClick={() => setVoiceConnected(null)} className="p-2 hover:bg-[rgb(var(--color-surface))] rounded-full">
+                      <button onClick={() => setVoiceConnected(null)} className="p-2 hover:bg-[rgb(var(--color-surface))] rounded-full text-red-500">
                           <PhoneOff size={16} />
                       </button>
                   </div>
+                  {/* Invisible audio elements for peers */}
+                  {Object.values(peers).map(p => (
+                      p.stream && <audio key={p.peerId} ref={el => { if(el) el.srcObject = p.stream!; }} autoPlay />
+                  ))}
               </div>
           )}
 
@@ -616,7 +780,6 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                           {isMobile && <button onClick={() => setMobileView('channels')}><Menu size={24} /></button>}
                           <Hash size={24} className="text-[rgb(var(--color-text-secondary))]" />
                           <span className="font-bold">{activeChannel.name}</span>
-                          {activeChannel.topic && <span className="text-sm text-[rgb(var(--color-text-secondary))] hidden md:block border-l border-[rgb(var(--color-border))] pl-4 ml-2">{activeChannel.topic}</span>}
                       </div>
                       <div className="flex gap-4 text-[rgb(var(--color-text-secondary))]">
                           <button onClick={() => setShowMembersPanel(!showMembersPanel)} className={`${showMembersPanel ? 'text-[rgb(var(--color-text))]' : ''}`}><Users size={24}/></button>
@@ -715,20 +878,45 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                   {/* Input Area */}
                   <div className="p-4 pt-0">
                       <div className="bg-[rgb(var(--color-surface-hover))] rounded-lg p-2 pr-4 shadow-inner relative">
-                          {/* Reply Preview */}
-                          {replyingTo && (
-                              <div className="flex items-center justify-between bg-[rgb(var(--color-surface))] p-2 rounded mb-2 border-l-4 border-[rgb(var(--color-primary))] text-sm">
-                                  <div>
-                                      <span className="text-[rgb(var(--color-primary))] font-bold mr-2">Replying to {replyingTo.sender?.display_name}</span>
-                                      <span className="text-[rgb(var(--color-text-secondary))] truncate block">{replyingTo.content || '[Media]'}</span>
-                                  </div>
-                                  <button onClick={() => setReplyingTo(null)}><X size={16}/></button>
-                              </div>
-                          )}
-
-                          {/* File Preview */}
-                          {getPreview() && <div className="mb-2 p-2 border-b border-[rgb(var(--color-border))] flex justify-between">{getPreview()} <button onClick={() => {setFile(null); setRemoteUrl('');}}><X/></button></div>}
                           
+                          {/* --- PREVIEWS & PANELS (Moved from inline) --- */}
+                          <div className="flex flex-col gap-2 mb-1">
+                            {/* Reply Preview */}
+                            {replyingTo && (
+                                <div className="flex items-center justify-between bg-[rgb(var(--color-surface))] p-2 rounded border-l-4 border-[rgb(var(--color-primary))] text-sm">
+                                    <div>
+                                        <span className="text-[rgb(var(--color-primary))] font-bold mr-2">Replying to {replyingTo.sender?.display_name}</span>
+                                        <span className="text-[rgb(var(--color-text-secondary))] truncate block">{replyingTo.content || '[Media]'}</span>
+                                    </div>
+                                    <button onClick={() => setReplyingTo(null)}><X size={16}/></button>
+                                </div>
+                            )}
+
+                            {/* URL Input Panel */}
+                            {mediaInputMode === 'url' && !file && !remoteUrl && (
+                                <div className="flex items-center gap-2 bg-[rgb(var(--color-surface))] p-2 rounded border border-[rgb(var(--color-border))]">
+                                    <LinkIcon size={16} className="text-[rgb(var(--color-text-secondary))]" />
+                                    <input 
+                                        autoFocus 
+                                        className="flex-1 bg-transparent outline-none text-sm" 
+                                        placeholder="Paste media URL here..." 
+                                        value={remoteUrl} 
+                                        onChange={e=>setRemoteUrl(e.target.value)} 
+                                    />
+                                    <button onClick={()=>setMediaInputMode(null)} className="p-1 hover:bg-[rgb(var(--color-surface-hover))] rounded"><X size={14}/></button>
+                                </div>
+                            )}
+
+                            {/* Media Preview Panel */}
+                            {getPreview() && (
+                                <div className="flex items-center justify-between bg-[rgb(var(--color-surface))] p-2 rounded border border-[rgb(var(--color-border))]">
+                                    {getPreview()} 
+                                    <button onClick={() => {setFile(null); setRemoteUrl('');}} className="p-1 hover:bg-[rgb(var(--color-surface-hover))] rounded"><X size={14}/></button>
+                                </div>
+                            )}
+                          </div>
+
+                          {/* --- MAIN INPUT ROW --- */}
                           <div className="flex items-center gap-2">
                              <button onClick={() => setShowMediaMenu(!showMediaMenu)} className="p-2 text-[rgb(var(--color-text-secondary))] hover:text-[rgb(var(--color-text))] rounded-full relative">
                                  <Plus size={20} className="bg-[rgb(var(--color-text-secondary))] text-[rgb(var(--color-surface))] rounded-full p-0.5" />
@@ -740,20 +928,14 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                                  )}
                              </button>
                              
-                             {mediaInputMode === 'url' ? (
-                                 <div className="flex-1 flex items-center gap-2">
-                                     <input autoFocus className="flex-1 bg-transparent outline-none" placeholder="https://..." value={remoteUrl} onChange={e=>setRemoteUrl(e.target.value)} />
-                                     <button onClick={()=>setMediaInputMode(null)}><X/></button>
-                                 </div>
-                             ) : (
-                                 <input 
-                                    className="flex-1 bg-transparent outline-none py-2 max-h-32 overflow-y-auto text-[rgb(var(--color-text))]" 
-                                    placeholder={`Message #${activeChannel.name}`}
-                                    value={content}
-                                    onChange={e => setContent(e.target.value)}
-                                    onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) handleSend(e); }}
-                                 />
-                             )}
+                             {/* Text Input */}
+                             <input 
+                                className="flex-1 bg-transparent outline-none py-2 max-h-32 overflow-y-auto text-[rgb(var(--color-text))]" 
+                                placeholder={`Message #${activeChannel.name}`}
+                                value={content}
+                                onChange={e => setContent(e.target.value)}
+                                onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) handleSend(e); }}
+                             />
                              
                              <input type="file" ref={fileInputRef} className="hidden" onChange={e => {if(e.target.files?.[0]) setFile(e.target.files[0])}} />
 
@@ -874,8 +1056,14 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                   <h3 className="text-xl font-bold mb-4 text-center">Customize Your Server</h3>
                   <p className="text-center text-[rgb(var(--color-text-secondary))] text-sm mb-6">Give your new server a personality with a name and an icon.</p>
                   <div className="flex justify-center mb-4">
-                      <div className="w-20 h-20 rounded-full border-2 border-dashed border-[rgb(var(--color-border))] flex items-center justify-center">
-                          <ImageIcon className="text-[rgb(var(--color-text-secondary))]" />
+                      <div className="w-24 h-24 rounded-full border-2 border-dashed border-[rgb(var(--color-border))] flex items-center justify-center relative overflow-hidden group cursor-pointer">
+                          {newGazeboIcon ? (
+                              <img src={newGazeboIcon} className="w-full h-full object-cover" />
+                          ) : (
+                              <ImageIcon className="text-[rgb(var(--color-text-secondary))]" />
+                          )}
+                          <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleIconUpload(e, 'create')} />
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-xs text-white font-bold">UPLOAD</div>
                       </div>
                   </div>
                   <input id="newGazeboName" type="text" placeholder="Server Name" className="w-full p-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded mb-4 text-[rgb(var(--color-text))]" />
@@ -937,8 +1125,11 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                       <section>
                           <h3 className="font-bold mb-2 uppercase text-xs text-[rgb(var(--color-text-secondary))]">Overview</h3>
                           <div className="flex gap-4 items-center mb-4">
-                              <img src={activeGazebo?.icon_url} className="w-20 h-20 rounded-full object-cover border-2 border-[rgb(var(--color-border))]" />
-                              <button className="text-sm bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded font-medium">Change Icon</button>
+                              <img src={activeGazebo?.icon_url} className="w-24 h-24 rounded-full object-cover border-2 border-[rgb(var(--color-border))]" />
+                              <label className="cursor-pointer text-sm bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded font-medium hover:opacity-90 transition">
+                                  Change Icon
+                                  <input type="file" className="hidden" onChange={(e) => handleIconUpload(e, 'update')} />
+                              </label>
                           </div>
                           <input type="text" defaultValue={activeGazebo?.name} onBlur={(e) => updateGazebo({ name: e.target.value })} className="w-full p-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded" />
                       </section>
@@ -1001,11 +1192,20 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                           <button 
                              onClick={() => {
                                  setViewingProfile(null);
-                                 window.dispatchEvent(new CustomEvent('openDirectMessage', { detail: viewingProfile }));
+                                 navigate(`/message?user=${viewingProfile.username}`);
                              }}
                              className="flex-1 bg-[rgb(var(--color-primary))] text-white py-2 rounded font-medium text-sm"
                           >
                              Message
+                          </button>
+                          <button 
+                             onClick={() => {
+                                 setViewingProfile(null);
+                                 navigate(`/?user=${viewingProfile.username}`);
+                             }}
+                             className="flex-1 bg-[rgb(var(--color-surface-hover))] border border-[rgb(var(--color-border))] text-[rgb(var(--color-text))] py-2 rounded font-medium text-sm"
+                          >
+                             View Profile
                           </button>
                       </div>
                   </div>

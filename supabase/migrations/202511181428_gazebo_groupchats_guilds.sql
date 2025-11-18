@@ -77,3 +77,20 @@ ADD COLUMN IF NOT EXISTS role_name text DEFAULT 'Member';
 -- Optional: channel topics/descriptions
 ALTER TABLE public.gazebo_channels
 ADD COLUMN IF NOT EXISTS topic text DEFAULT '';
+
+
+-- 2. Create a new table for custom gazebo invite links.
+--    This table allows the owner to create short, memorable, and trackable invite codes.
+CREATE TABLE public.gazebo_invites (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    gazebo_id uuid NOT NULL,
+    invite_code text NOT NULL UNIQUE, -- The custom short code, e.g. 'dev-team'
+    created_by_user_id uuid, -- Who created it (the owner)
+    expires_at timestamp with time zone,
+    max_uses integer,
+    uses_count integer DEFAULT 0,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT gazebo_invites_pkey PRIMARY KEY (id),
+    CONSTRAINT gazebo_invites_gazebo_id_fkey FOREIGN KEY (gazebo_id) REFERENCES public.gazebos(id) ON DELETE CASCADE,
+    CONSTRAINT gazebo_invites_created_by_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.profiles(id)
+);

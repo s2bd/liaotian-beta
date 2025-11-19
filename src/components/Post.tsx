@@ -13,7 +13,10 @@ import {
   X, 
   Send, 
   Link as LinkIcon, 
-  Camera 
+  Camera,
+  Share2,
+  Edit3,
+  Check
 } from 'lucide-react';
 
 // --- TYPES ---
@@ -174,6 +177,12 @@ export const PostItem: React.FC<PostItemProps> = ({
   const [newCommentText, setNewCommentText] = useState('');
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [openMenu, setOpenMenu] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  // Edit Logic
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(post.content);
+  const [displayContent, setDisplayContent] = useState(post.content);
 
   // Delete Logic
   const [deleteProgress, setDeleteProgress] = useState(0);
@@ -185,6 +194,45 @@ export const PostItem: React.FC<PostItemProps> = ({
     return (new Date().getTime() - new Date(lastSeen).getTime()) < 300000;
   };
 
+  // Sync local content with prop updates
+  useEffect(() => {
+    setDisplayContent(post.content);
+    setEditContent(post.content);
+  }, [post.content]);
+
+  // --- SHARE LOGIC ---
+  const handleShare = () => {
+    const url = `${window.location.origin}/?post=${post.id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true);
+      setOpenMenu(false);
+      setTimeout(() => setShareCopied(false), 2000);
+    });
+  };
+
+  // --- EDIT LOGIC ---
+  const handleUpdatePost = async () => {
+    if (!editContent.trim() || editContent === post.content) {
+      setIsEditing(false);
+      return;
+    }
+    
+    const { error } = await supabase
+      .from('posts')
+      .update({ content: editContent })
+      .eq('id', post.id);
+
+    if (!error) {
+      setDisplayContent(editContent);
+      setIsEditing(false);
+      // Note: We update local display content immediately. 
+      // The parent prop might lag until a refresh/realtime event, 
+      // but this ensures the UI feels responsive.
+    } else {
+      alert("Failed to update post.");
+    }
+  };
+
   // --- LIKES LOGIC ---
   const fetchLikers = async () => {
     const { data } = await supabase.from('likes').select('user_id, profiles(*)').eq('entity_id', post.id).eq('entity_type', 'post');
@@ -194,9 +242,6 @@ export const PostItem: React.FC<PostItemProps> = ({
   const handleLikeClick = async () => {
     if (!currentUserId) return;
     onLikeToggle(post); // Optimistic update in parent
-    // The actual DB call logic is usually shared or handled here. 
-    // Given the prompt asked to move logic here, we perform the DB op here 
-    // BUT rely on parent for list state.
     
     if (!isLiked) {
        await supabase.from('likes').insert({ user_id: currentUserId, entity_id: post.id, entity_type: 'post' });
@@ -263,6 +308,8 @@ export const PostItem: React.FC<PostItemProps> = ({
     setDeleteProgress(0);
   };
 
+  const isAuthor = currentUserId === post.user_id;
+
   return (
     <>
       <div className="border-b border-[rgb(var(--color-border))] p-4 hover:bg-[rgb(var(--color-surface-hover))] transition bg-[rgb(var(--color-surface))]">
@@ -280,8 +327,26 @@ export const PostItem: React.FC<PostItemProps> = ({
               <span className="text-[rgb(var(--color-text-secondary))] text-sm">· {new Date(post.created_at).toLocaleDateString()} at {formatTime(post.created_at)}</span>
             </div>
             
-            <p className="mt-1 whitespace-pre-wrap break-words text-[rgb(var(--color-text))]">{post.content}</p>
-            {getEmbeddedMedia(post.content, post.media_url) && <div className="mt-3">{getEmbeddedMedia(post.content, post.media_url)}</div>}
+            {isEditing ? (
+              <div className="mt-2 space-y-2">
+                 <textarea 
+                    value={editContent} 
+                    onChange={(e) => setEditContent(e.target.value)} 
+                    className="w-full p-2 bg-[rgb(var(--color-background))] border border-[rgb(var(--color-border))] rounded-lg text-[rgb(var(--color-text))] outline-none resize-none focus:border-[rgb(var(--color-primary))]"
+                    rows={3}
+                    autoFocus
+                 />
+                 <div className="flex gap-2 justify-end">
+                    <button onClick={() => { setIsEditing(false); setEditContent(displayContent); }} className="text-sm text-[rgb(var(--color-text-secondary))] hover:underline">Cancel</button>
+                    <button onClick={handleUpdatePost} className="text-sm bg-[rgb(var(--color-primary))] text-white px-3 py-1 rounded-full font-bold">Save</button>
+                 </div>
+              </div>
+            ) : (
+              <>
+                 <p className="mt-1 whitespace-pre-wrap break-words text-[rgb(var(--color-text))]">{displayContent}</p>
+                 {getEmbeddedMedia(displayContent, post.media_url) && <div className="mt-3">{getEmbeddedMedia(displayContent, post.media_url)}</div>}
+              </>
+            )}
 
             {post.media_url && (
               <div className="mt-3">
@@ -319,23 +384,34 @@ export const PostItem: React.FC<PostItemProps> = ({
             </div>
           </div>
 
-          {currentUserId === post.user_id && onDelete && (
-            <div className="relative flex-shrink-0">
-              <button onClick={(e) => { e.stopPropagation(); setOpenMenu(!openMenu); }} className="p-1 rounded-full text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))] transition">
-                <MoreVertical size={20} />
-              </button>
-              {openMenu && (
-                <>
-                  <div className="fixed inset-0 z-0" onClick={() => setOpenMenu(false)} />
-                  <div className="absolute right-0 mt-2 w-48 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-lg shadow-xl overflow-hidden z-10">
-                    <button onClick={() => { setShowDeleteModal(true); setOpenMenu(false); }} className="w-full text-left p-3 text-red-500 hover:bg-red-50 transition flex items-center gap-2">
-                      <Trash2 size={18} /> Delete Post
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          <div className="relative flex-shrink-0">
+            <button onClick={(e) => { e.stopPropagation(); setOpenMenu(!openMenu); }} className="p-1 rounded-full text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))] transition">
+               {shareCopied ? <Check size={20} className="text-green-500" /> : <MoreVertical size={20} />}
+            </button>
+            {openMenu && (
+              <>
+                <div className="fixed inset-0 z-0" onClick={() => setOpenMenu(false)} />
+                <div className="absolute right-0 mt-2 w-48 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded-lg shadow-xl overflow-hidden z-10">
+                  {/* Share Option - Everyone */}
+                  <button onClick={handleShare} className="w-full text-left p-3 text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-surface-hover))] transition flex items-center gap-2">
+                    <Share2 size={18} /> Share Post
+                  </button>
+
+                  {/* Edit/Delete Options - Author Only */}
+                  {isAuthor && (
+                    <>
+                      <button onClick={() => { setIsEditing(true); setOpenMenu(false); }} className="w-full text-left p-3 text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-surface-hover))] transition flex items-center gap-2">
+                         <Edit3 size={18} /> Edit Post
+                      </button>
+                      <button onClick={() => { setShowDeleteModal(true); setOpenMenu(false); }} className="w-full text-left p-3 text-red-500 hover:bg-red-50 transition flex items-center gap-2">
+                        <Trash2 size={18} /> Delete Post
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

@@ -8,7 +8,7 @@ import {
   Hash, Volume2, Plus, Settings, Users, X, Send, Paperclip, Mic, Link as LinkIcon,
   Trash2, Edit3, Copy, Crown, Shield, ChevronDown, Menu,
   FileText, LogOut, Image as ImageIcon, Play, Pause,
-  PhoneOff, UserMinus, ShieldAlert, CornerUpLeft, Video, Smile
+  PhoneOff, UserMinus, ShieldAlert, CornerUpLeft, Video, Smile, BadgeCheck
 } from 'lucide-react';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '💀'];
@@ -51,6 +51,11 @@ type VoicePeer = {
     call?: Peer.MediaConnection;
 };
 
+type WelcomeData = {
+    gazebo: Gazebo;
+    owner: Profile;
+} | null;
+
 // --- AudioPlayer Helper ---
 const AudioPlayer = ({ src, isOutgoing }: { src: string, isOutgoing: boolean }) => {
     const audioRef = useRef<HTMLAudioElement>(null);
@@ -83,7 +88,8 @@ const AudioPlayer = ({ src, isOutgoing }: { src: string, isOutgoing: boolean }) 
       };
     }, []);
   
-    const handlePlayPause = () => {
+    const handlePlayPause = (e: React.MouseEvent) => {
+      e.preventDefault();
       if (audioRef.current) isPlaying ? audioRef.current.pause() : audioRef.current.play();
     };
   
@@ -144,6 +150,9 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
   const [showCreateChannelModal, setShowCreateChannelModal] = useState(false);
   const [viewingProfile, setViewingProfile] = useState<Profile | null>(null);
   
+  // New Welcome Screen State
+  const [welcomeData, setWelcomeData] = useState<WelcomeData>(null);
+  
   // Editing & Reply States
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -197,12 +206,15 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
         // Handle Initial Routing
         if (initialInviteCode) {
            handleInviteJoin(initialInviteCode).then(g => {
-               if (g) { setActiveGazebo(g); setMobileView('channels'); }
                if (onInviteHandled) onInviteHandled();
            });
         } else if (initialGazeboId) {
             const target = list.find(g => g.id === initialGazeboId);
-            if (target) { setActiveGazebo(target); setMobileView('channels'); }
+            if (target) { 
+                // If joining via direct ID, check if we need to show welcome (optional, but for now just standard entry)
+                setActiveGazebo(target); 
+                setMobileView('channels'); 
+            }
             else if (list.length > 0 && window.innerWidth > 768) setActiveGazebo(list[0]);
         } else if (list.length > 0 && !activeGazebo) {
             if (window.innerWidth > 768) setActiveGazebo(list[0]);
@@ -250,7 +262,6 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
 
   // --- Voice Channel Logic (PeerJS Mesh) ---
   useEffect(() => {
-    // Cleanup function for previous voice connection
     return () => {
         if (voicePeerRef.current) {
             voicePeerRef.current.destroy();
@@ -263,11 +274,10 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
             voicePresenceRef.current.unsubscribe();
         }
     };
-  }, []); // Run once on mount/unmount generally, specific logic below
+  }, []);
 
   useEffect(() => {
       if (!voiceConnected || !user) {
-          // If disconnected, clean up
           if (voicePeerRef.current) {
               voicePeerRef.current.destroy();
               voicePeerRef.current = null;
@@ -285,13 +295,11 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
               const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
               setLocalStream(stream);
 
-              // Create Peer with a scoped ID to avoid conflict with global Calls
               const myPeerId = `${user.id}-voice`;
               const peer = new Peer(myPeerId);
               voicePeerRef.current = peer;
 
               peer.on('open', () => {
-                  // Join Presence Channel
                   const channel = supabase.channel(`voice:${voiceConnected.channelId}`);
                   voicePresenceRef.current = channel;
 
@@ -299,13 +307,8 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                       const state = channel.presenceState();
                       const presentUsers = Object.values(state).flat() as any[];
                       
-                      // Find users who are NOT me
                       presentUsers.forEach((u: any) => {
                           if (u.peerId !== myPeerId && !peers[u.peerId]) {
-                              // Simple mesh strategy: 
-                              // Call if my ID > their ID to avoid double calling, OR call everyone and let PeerJS handle busy state?
-                              // Better: Just call everyone not connected. PeerJS usually handles duplicate connection attempts or we check state.
-                              // For simplicity: Sort IDs. The one with higher string ID calls the lower one.
                               if (myPeerId > u.peerId) {
                                   const call = peer.call(u.peerId, stream);
                                   handlePeerCall(call, u.peerId, u.user_id);
@@ -319,10 +322,8 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                   });
               });
 
-              // Answer incoming calls
               peer.on('call', (call) => {
                   call.answer(stream);
-                  // Extract user ID from peer ID (format: userid-voice)
                   const callerUserId = call.peer.replace('-voice', '');
                   handlePeerCall(call, call.peer, callerUserId);
               });
@@ -365,8 +366,6 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
       const sub = supabase.channel(`ch:${activeChannel.id}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gazebo_messages', filter: `channel_id=eq.${activeChannel.id}` }, async (payload) => {
             const newMsg = payload.new as AppGazeboMessage;
-            
-            // Fetch sender details and reply details for the new message
             const { data: sender } = await supabase.from('profiles').select('*').eq('id', newMsg.user_id).single();
             
             let replyData = null;
@@ -466,8 +465,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
      const file = e.target.files?.[0];
      if (!file) return;
      
-     // Use uploadMedia from supabase.ts
-     const result = await uploadMedia(file, 'profiles'); // Reuse profiles or use a generic bucket if available
+     const result = await uploadMedia(file, 'profiles');
      if (result && result.url) {
          if (target === 'create') {
              setNewGazeboIcon(result.url);
@@ -483,6 +481,10 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
       if (!inv) { alert('Invalid invite code'); return null; }
       
       const g = inv.gazebos as Gazebo;
+      
+      // Fetch Owner for Welcome Screen
+      const { data: owner } = await supabase.from('profiles').select('*').eq('id', g.owner_id).single();
+
       const { count } = await supabase.from('gazebo_members').select('*', {count: 'exact', head: true}).eq('gazebo_id', g.id).eq('user_id', user.id);
       
       if (!count) {
@@ -491,6 +493,10 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
               await supabase.from('gazebo_invites').update({ uses_count: inv.uses_count + 1 }).eq('id', inv.id);
               setGazebos(prev => [...prev, g]);
               setActiveGazebo(g);
+              
+              // Trigger Welcome Screen
+              if (owner) setWelcomeData({ gazebo: g, owner });
+              
               setMobileView('channels');
               setShowJoinGazeboModal(false);
               setShowJoinCreateModal(false);
@@ -559,6 +565,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
       if (!activeChannel || !user || isUploading || (!content.trim() && !file && !remoteUrl)) return;
       
       setIsUploading(true);
+      setUploadProgress(0);
       let media_url = remoteUrl;
       let media_type = null;
 
@@ -572,7 +579,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
            if (remoteUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i)) media_type = 'image';
            else if (remoteUrl.match(/\.(mp4|webm|mov|avi)$/i)) media_type = 'video';
            else if (remoteUrl.match(/\.(mp3|wav|ogg|m4a)$/i)) media_type = 'audio';
-           else media_type = 'document';
+           else media_type = 'document'; // Default fallback for remote URLs handled by renderer
       }
 
       await supabase.from('gazebo_messages').insert({
@@ -584,7 +591,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
           reply_to_id: replyingTo?.id
       });
 
-      setContent(''); setFile(null); setRemoteUrl(''); setIsUploading(false); setMediaInputMode(null); setReplyingTo(null);
+      setContent(''); setFile(null); setRemoteUrl(''); setIsUploading(false); setUploadProgress(0); setMediaInputMode(null); setReplyingTo(null);
   };
 
   const deleteMessage = async (id: string) => {
@@ -608,7 +615,8 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
           recorder.ondataavailable = e => audioChunksRef.current.push(e.data);
           recorder.onstop = () => {
               const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-              setFile(new File([blob], 'voice.webm', { type: 'audio/webm' }));
+              const audioFile = new File([blob], 'voice.webm', { type: 'audio/webm' });
+              setFile(audioFile);
               setIsRecording(false);
               stream.getTracks().forEach(t => t.stop());
           };
@@ -616,7 +624,12 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
           setIsRecording(true);
       });
   };
-  const stopRecording = () => mediaRecorderRef.current?.stop();
+  
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    // We DO NOT send here. The 'stop' event listener sets the file state.
+    // The user will see the AudioPlayer preview and hit the send button manually.
+  };
 
   // --- Helper: Manage Channels & Invites ---
   const manageChannel = async (action: 'create' | 'update' | 'delete', payload?: any) => {
@@ -655,10 +668,10 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
       if (file) {
         const url = URL.createObjectURL(file);
         if (file.type.startsWith('image/')) return <img src={url} className="max-h-20 rounded" />;
+        if (file.type.startsWith('audio/')) return <div className="w-64"><AudioPlayer src={url} isOutgoing={true}/></div>;
         return <div className="flex items-center gap-2 text-sm"><FileText size={16} /> {file.name}</div>;
       }
       if (remoteUrl) {
-          // Simple check for image URL extension
           if (remoteUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
               return <img src={remoteUrl} className="max-h-20 rounded" />;
           }
@@ -731,8 +744,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                        <span>{c.name}</span>
                        {voiceConnected?.channelId === c.id && (
                            <div className="flex -space-x-1 ml-auto">
-                               <img src={user?.user_metadata.avatar_url} className="w-4 h-4 rounded-full border border-[rgb(var(--color-surface))]" />
-                               {/* Visual for other peers in voice would theoretically go here if we tracked presence per channel strictly */}
+                               <img src={user?.user_metadata.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.user_metadata.username}`} className="w-4 h-4 rounded-full border border-[rgb(var(--color-surface))]" />
                            </div>
                        )}
                    </div>
@@ -758,7 +770,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
           )}
 
           <div className="p-2 bg-[rgb(var(--color-surface-hover))] flex items-center gap-2 border-t border-[rgb(var(--color-border))]">
-               <img src={user?.user_metadata.avatar_url} className="w-8 h-8 rounded-full bg-gray-500 cursor-pointer" onClick={() => { if(user) setViewingProfile(members.find(m=>m.user_id===user.id)?.profiles || null)}} />
+               <img src={user?.user_metadata.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.user_metadata.username}`} className="w-8 h-8 rounded-full bg-gray-500 cursor-pointer" onClick={() => { if(user) setViewingProfile(members.find(m=>m.user_id===user.id)?.profiles || null)}} />
                <div className="flex-1 min-w-0">
                    <div className="text-sm font-bold truncate">{user?.user_metadata.display_name || 'User'}</div>
                    <div className="text-xs text-[rgb(var(--color-text-secondary))] truncate">#{user?.email?.split('@')[0]}</div>
@@ -814,7 +826,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                                   <div className={`group flex gap-4 px-2 py-1 rounded hover:bg-[rgb(var(--color-surface-hover))] ${isNewGroup ? 'mt-3' : ''}`}>
                                       {isNewGroup ? (
                                           <img 
-                                            src={msg.sender?.avatar_url} 
+                                            src={msg.sender?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender?.username}`} 
                                             className="w-10 h-10 rounded-full cursor-pointer hover:opacity-80 mt-0.5" 
                                             onClick={() => setViewingProfile(msg.sender || null)}
                                           />
@@ -848,7 +860,13 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                                               </div>
                                           ) : (
                                               <div className="text-[rgb(var(--color-text))] whitespace-pre-wrap break-words opacity-90">
-                                                  {msg.content}
+                                                  {/* Simple URL detection fallback if not media_type */}
+                                                  {msg.content.split(' ').map((part, idx) => {
+                                                    if (part.match(/^https?:\/\//)) {
+                                                      return <a key={idx} href={part} target="_blank" rel="noopener noreferrer" className="text-[rgb(var(--color-primary))] hover:underline break-all">{part} </a>
+                                                    }
+                                                    return part + ' ';
+                                                  })}
                                               </div>
                                           )}
                                           
@@ -867,6 +885,13 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                                                   {msg.media_type === 'image' && <img src={msg.media_url} className="max-h-80 rounded-lg border border-[rgb(var(--color-border))]" />}
                                                   {msg.media_type === 'video' && <video src={msg.media_url} controls className="max-h-80 rounded-lg border border-[rgb(var(--color-border))]" />}
                                                   {msg.media_type === 'audio' && <div className="bg-[rgb(var(--color-surface))] p-2 rounded w-64 border border-[rgb(var(--color-border))]"><AudioPlayer src={msg.media_url} isOutgoing={false} /></div>}
+                                                  {/* Fallback for generic links or files that aren't the main types */}
+                                                  {(msg.media_type === 'document' || (!['image','video','audio'].includes(msg.media_type || ''))) && (
+                                                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-[rgb(var(--color-surface-hover))] rounded w-fit border border-[rgb(var(--color-border))] hover:bg-[rgb(var(--color-border))] transition">
+                                                        <LinkIcon size={16} />
+                                                        <span className="truncate max-w-xs">{msg.media_url}</span>
+                                                    </a>
+                                                  )}
                                               </div>
                                           )}
                                       </div>
@@ -879,10 +904,17 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
 
                   {/* Input Area */}
                   <div className="p-4 pt-0">
-                      <div className="bg-[rgb(var(--color-surface-hover))] rounded-lg p-2 pr-4 shadow-inner relative">
+                      <div className="bg-[rgb(var(--color-surface-hover))] rounded-lg p-2 pr-4 shadow-inner relative overflow-hidden">
                           
+                          {/* Progress Bar */}
+                          {isUploading && (
+                             <div className="absolute top-0 left-0 right-0 h-1 bg-[rgb(var(--color-border))]">
+                                <div className="h-full bg-[rgb(var(--color-primary))] transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                             </div>
+                          )}
+
                           {/* --- PREVIEWS & PANELS (Moved from inline) --- */}
-                          <div className="flex flex-col gap-2 mb-1">
+                          <div className="flex flex-col gap-2 mb-1 pt-2">
                             {/* Reply Preview */}
                             {replyingTo && (
                                 <div className="flex items-center justify-between bg-[rgb(var(--color-surface))] p-2 rounded border-l-4 border-[rgb(var(--color-primary))] text-sm">
@@ -968,7 +1000,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                                 className="group flex items-center gap-2 p-2 rounded hover:bg-[rgb(var(--color-surface-hover))] cursor-pointer opacity-90 hover:opacity-100 relative"
                               >
                                   <div className="relative" onClick={() => setViewingProfile(m.profiles)}>
-                                      <img src={m.profiles.avatar_url} className="w-8 h-8 rounded-full object-cover" />
+                                      <img src={m.profiles.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.profiles.username}`} className="w-8 h-8 rounded-full object-cover" />
                                   </div>
                                   <span className={`font-medium truncate flex-1`} style={{ color: role === 'owner' ? '#eab308' : role === 'admin' ? '#3b82f6' : 'inherit' }} onClick={() => setViewingProfile(m.profiles)}>{m.profiles.display_name}</span>
                                   {role === 'owner' && <Crown size={14} className="text-yellow-500" />}
@@ -992,6 +1024,48 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
 
       {/* === MODALS === */}
       
+      {/* Welcome Screen Modal */}
+      {welcomeData && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] backdrop-blur-sm">
+              <div className="bg-[rgb(var(--color-surface))] p-8 rounded-2xl w-full max-w-md shadow-2xl border border-[rgb(var(--color-border))] text-center transform transition-all animate-in fade-in zoom-in duration-300">
+                  <div className="w-24 h-24 rounded-3xl mx-auto mb-4 overflow-hidden shadow-lg relative group">
+                      {welcomeData.gazebo.icon_url ? (
+                          <img src={welcomeData.gazebo.icon_url} className="w-full h-full object-cover" />
+                      ) : (
+                          <div className="w-full h-full bg-[rgb(var(--color-primary))] flex items-center justify-center text-3xl font-bold text-white">
+                              {welcomeData.gazebo.name.substring(0,2).toUpperCase()}
+                          </div>
+                      )}
+                  </div>
+                  
+                  <h2 className="text-2xl font-black mb-1">{welcomeData.gazebo.name}</h2>
+                  <p className="text-[rgb(var(--color-text-secondary))] mb-6 text-sm">Welcome to the server!</p>
+                  
+                  <div className="bg-[rgb(var(--color-surface-hover))] rounded-xl p-4 mb-6 text-left flex items-center gap-4">
+                      <img 
+                        src={welcomeData.owner.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${welcomeData.owner.username}`} 
+                        className="w-12 h-12 rounded-full border-2 border-[rgb(var(--color-surface))]"
+                      />
+                      <div>
+                          <div className="text-xs font-bold uppercase text-[rgb(var(--color-text-secondary))] mb-0.5">Created By</div>
+                          <div className="font-bold flex items-center gap-1">
+                              {welcomeData.owner.display_name} 
+                              {welcomeData.owner.verified && <BadgeCheck size={14} className="text-[rgb(var(--color-accent))]" />}
+                          </div>
+                          <div className="text-xs opacity-70">@{welcomeData.owner.username}</div>
+                      </div>
+                  </div>
+
+                  <button 
+                      onClick={() => setWelcomeData(null)} 
+                      className="w-full py-3 bg-[rgb(var(--color-primary))] text-white rounded-xl font-bold hover:opacity-90 transition shadow-lg shadow-[rgb(var(--color-primary))]/20"
+                  >
+                      Enter Server
+                  </button>
+              </div>
+          </div>
+      )}
+
       {/* Join or Create Modal (First Step) */}
       {showJoinCreateModal && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -1127,7 +1201,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                       <section>
                           <h3 className="font-bold mb-2 uppercase text-xs text-[rgb(var(--color-text-secondary))]">Overview</h3>
                           <div className="flex gap-4 items-center mb-4">
-                              <img src={activeGazebo?.icon_url} className="w-24 h-24 rounded-full object-cover border-2 border-[rgb(var(--color-border))]" />
+                              <img src={activeGazebo?.icon_url || `https://ui-avatars.com/api/?name=${activeGazebo?.name}&background=random`} className="w-24 h-24 rounded-full object-cover border-2 border-[rgb(var(--color-border))]" />
                               <label className="cursor-pointer text-sm bg-[rgb(var(--color-primary))] text-white px-4 py-2 rounded font-medium hover:opacity-90 transition">
                                   Change Icon
                                   <input type="file" className="hidden" onChange={(e) => handleIconUpload(e, 'update')} />
@@ -1179,7 +1253,7 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
               <div className="bg-[rgb(var(--color-surface))] w-80 rounded-xl shadow-2xl overflow-hidden border border-[rgb(var(--color-border))]" onClick={e => e.stopPropagation()}>
                   <div className="h-24 bg-[rgb(var(--color-primary))] relative">
                       {viewingProfile.banner_url && <img src={viewingProfile.banner_url} className="w-full h-full object-cover" />}
-                      <img src={viewingProfile.avatar_url} className="w-20 h-20 rounded-full border-4 border-[rgb(var(--color-surface))] absolute -bottom-10 left-4 bg-[rgb(var(--color-surface))]" />
+                      <img src={viewingProfile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingProfile.username}`} className="w-20 h-20 rounded-full border-4 border-[rgb(var(--color-surface))] absolute -bottom-10 left-4 bg-[rgb(var(--color-surface))]" />
                   </div>
                   <div className="pt-12 pb-4 px-4">
                       <div className="font-bold text-xl">{viewingProfile.display_name}</div>

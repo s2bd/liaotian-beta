@@ -241,10 +241,17 @@ const Main = () => {
       schema: 'public',
       table: 'messages',
       filter: `recipient_id=eq.${user.id}`
-    }, (payload) => {
-      if (payload.old.read === false && payload.new.read === true) {
-        setUnreadMessages(c => Math.max(0, c - 1));
-      }
+    }, () => {
+      // Refetch count completely to ensure accuracy (fixes issue where 'old' payload is missing)
+      const fetchCount = async () => {
+          const { count } = await supabase
+            .from('messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('recipient_id', user.id)
+            .eq('read', false);
+          setUnreadMessages(count || 0);
+      };
+      fetchCount();
     });
 
     channel.on('postgres_changes', {
@@ -423,7 +430,13 @@ const handleMessageUser = (targetProfile: any) => {
 		    />
 		)}
         {view === 'profile' && (
-          <Profile userId={selectedProfileId} onMessage={handleMessageUser} onSettings={!selectedProfileId || selectedProfileId === user.id ? handleSettings : undefined} />
+          <Profile 
+            key={selectedProfileId || 'own-profile'} // Force remount if profile changes
+            userId={selectedProfileId} 
+            initialPostId={selectedPostId} // This triggers the modal in Profile.tsx
+            onMessage={handleMessageUser} 
+            onSettings={!selectedProfileId || selectedProfileId === user.id ? handleSettings : undefined} 
+          />
         )}
         {view === 'settings' && <Settings />}
         {showNotifications && <Notifications onClose={() => setShowNotifications(false)} />}

@@ -607,22 +607,31 @@ export const Profile = ({ userId, initialPostId, onMessage, onSettings }: { user
                   .from('posts')
                   .select('*, profiles(*)')
                   .eq('id', initialPostId)
-                  .single();
+                  .maybeSingle(); // Use maybeSingle for safety
               
               if (data) {
-                  const { likeCounts, commentCounts } = await getPostCounts([data.id]);
+                  // Default to 0 if counts fail to load for any reason
+                  let lCount = 0;
+                  let cCount = 0;
+                  try {
+                    const { likeCounts, commentCounts } = await getPostCounts([data.id]);
+                    lCount = likeCounts[data.id] || 0;
+                    cCount = commentCounts[data.id] || 0;
+                  } catch (e) { console.error("Error loading counts", e); }
+
                   const postWithCounts = {
                       ...data,
-                      like_count: likeCounts[data.id] || 0,
-                      comment_count: commentCounts[data.id] || 0
+                      like_count: lCount,
+                      comment_count: cCount
                   };
                   setViewingPost(postWithCounts);
-                  fetchUserLikes([postWithCounts]);
+                  // Only fetch likes if we have a user (prevents errors in public view)
+                  if (user) fetchUserLikes([postWithCounts]);
               }
           };
           fetchPost();
       }
-  }, [initialPostId, getPostCounts, fetchUserLikes]);
+  }, [initialPostId]); // Reduced dependencies to avoid loops
 
 
   const loadFollowers = async () => {

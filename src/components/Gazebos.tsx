@@ -13,6 +13,40 @@ import {
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '💀'];
 
+const isUserOnline = (lastSeen: string | null | undefined): boolean => {
+    if (!lastSeen) return false;
+    const lastSeenDate = new Date(lastSeen);
+    const now = new Date();
+    return (now.getTime() - lastSeenDate.getTime()) < 300000; // 5 minutes
+};
+
+const formatLastSeen = (lastSeen: string | null | undefined): string | null => {
+    if (!lastSeen) return null;
+    const lastSeenDate = new Date(lastSeen);
+    const now = new Date();
+    const diffMs = now.getTime() - lastSeenDate.getTime();
+    if (diffMs < 300000) return 'Online'; // Should be handled by dot, but good fallback
+
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const days = Math.floor(diffSeconds / (60 * 60 * 24));
+    const hours = Math.floor((diffSeconds % (60 * 60 * 24)) / (60 * 60));
+    const minutes = Math.floor((diffSeconds % (60 * 60)) / 60);
+
+    let parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    
+    if (parts.length === 0) return 'Just now'; 
+    return `Last seen ${parts[0]} ago`; // Keep it short
+};
+
+const extractFirstUrl = (text: string): string | null => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const match = text.match(urlRegex);
+  return match ? match[0] : null;
+};
+
 // --- Types ---
 type GazeboReaction = {
   id: string;
@@ -835,12 +869,18 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                                   
                                   <div className={`group flex gap-4 px-2 py-1 rounded hover:bg-[rgb(var(--color-surface-hover))] ${isNewGroup ? 'mt-3' : ''}`}>
                                       {isNewGroup ? (
-                                          <img 
-                                            src={msg.sender?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender?.username}`} 
-                                            className="w-10 h-10 rounded-full cursor-pointer hover:opacity-80 mt-0.5" 
-                                            onClick={() => setViewingProfile(msg.sender || null)}
-                                          />
-                                      ) : <div className="w-10 text-xs text-[rgb(var(--color-text-secondary))] opacity-0 group-hover:opacity-100 text-right select-none pt-1">{new Date(msg.created_at).toLocaleTimeString([],{hour:'2-digit', minute:'2-digit'}).replace(/\s[AP]M/,'')}</div>}
+                                          <div className="relative mt-0.5 w-10 h-10 flex-shrink-0">
+                                              <img 
+                                                src={msg.sender?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.sender?.username}`} 
+                                                className="w-10 h-10 rounded-full cursor-pointer hover:opacity-80 object-cover" 
+                                                onClick={() => setViewingProfile(msg.sender || null)}
+                                              />
+                                              {/* NEW: Online Status Dot */}
+                                              {isUserOnline(msg.sender?.last_seen) && (
+                                                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-[rgb(var(--color-surface))] rounded-full z-10"></div>
+                                              )}
+                                          </div>
+                                      ) : <div className="w-10 text-xs text-[rgb(var(--color-text-secondary))] opacity-0 group-hover:opacity-100 text-right select-none pt-1 flex-shrink-0">{new Date(msg.created_at).toLocaleTimeString([],{hour:'2-digit', minute:'2-digit'}).replace(/\s[AP]M/,'')}</div>}
                                       
                                       <div className="flex-1 min-w-0 relative">
                                           {isNewGroup && (
@@ -878,6 +918,11 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                                                     return part + ' ';
                                                   })}
                                               </div>
+                                          )}
+
+                                          {/* NEW: Render Message Embed if URL found and no explicit media attachment */}
+                                          {msg.content && extractFirstUrl(msg.content) && !msg.media_url && (
+                                              <MessageEmbed url={extractFirstUrl(msg.content)!} />
                                           )}
                                           
                                           <div className="absolute -top-4 right-0 bg-[rgb(var(--color-surface))] border border-[rgb(var(--color-border))] rounded shadow-sm hidden group-hover:flex z-10 items-center">
@@ -1049,6 +1094,10 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                               >
                                   <div className="relative" onClick={() => setViewingProfile(m.profiles)}>
                                       <img src={m.profiles.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.profiles.username}`} className="w-8 h-8 rounded-full object-cover" />
+                                      {/* NEW: Member List Online Dot */}
+                                      {isUserOnline(m.profiles.last_seen) && (
+                                          <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-[rgb(var(--color-surface))] rounded-full"></div>
+                                      )}
                                   </div>
                                   <span className={`font-medium truncate flex-1`} style={{ color: role === 'owner' ? '#eab308' : role === 'admin' ? '#3b82f6' : 'inherit' }} onClick={() => setViewingProfile(m.profiles)}>{m.profiles.display_name}</span>
                                   {role === 'owner' && <Crown size={14} className="text-yellow-500" />}
@@ -1304,8 +1353,15 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                       <img src={viewingProfile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${viewingProfile.username}`} className="w-20 h-20 rounded-full border-4 border-[rgb(var(--color-surface))] absolute -bottom-10 left-4 bg-[rgb(var(--color-surface))]" />
                   </div>
                   <div className="pt-12 pb-4 px-4">
-                      <div className="font-bold text-xl">{viewingProfile.display_name}</div>
-                      <div className="text-[rgb(var(--color-text-secondary))] text-sm mb-4">@{viewingProfile.username}</div>
+                      <div className="font-bold text-xl flex items-center gap-1">
+                          {viewingProfile.display_name}
+                          {isUserOnline(viewingProfile.last_seen) && <div className="w-3 h-3 bg-green-500 rounded-full ml-1" title="Online" />}
+                      </div>
+                      <div className="text-[rgb(var(--color-text-secondary))] text-sm">@{viewingProfile.username}</div>
+                      {/* NEW: Last Seen Line */}
+                      <div className="text-xs text-[rgb(var(--color-text-secondary))] mb-4 mt-0.5">
+                          {isUserOnline(viewingProfile.last_seen) ? 'Online' : formatLastSeen(viewingProfile.last_seen)}
+                      </div>
                       
                       <div className="border-t border-[rgb(var(--color-border))] py-2 mb-2">
                           <h4 className="text-xs font-bold uppercase text-[rgb(var(--color-text-secondary))] mb-1">About Me</h4>
@@ -1316,8 +1372,8 @@ export const Gazebos = ({ initialInviteCode, onInviteHandled, initialGazeboId }:
                           <button 
                              onClick={() => {
                                  setViewingProfile(null);
-                                 navigate(`/message?user=${viewingProfile.username}`);
-                                 // Dispatch event to force Messages component to load conversation without refresh
+                                 // FIX: Navigate to base /message route first, then trigger event
+                                 navigate('/message'); 
                                  setTimeout(() => {
                                      window.dispatchEvent(new CustomEvent('openDirectMessage', { detail: viewingProfile }));
                                  }, 100);

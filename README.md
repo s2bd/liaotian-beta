@@ -76,9 +76,9 @@ If you just want to create an account on **Liaoverse** (our official deployment)
 ## 🚨 Current flaws
 - [ ] Cookie “__cf_bm” has been rejected for invalid domain. Browser console error logs sometimes.
 - [ ] audio and video calling may require a turn server
-- [ ] Gazebo "message" button on user profile card not opening DM directly (requires a refresh)
 - [ ] Current App.tsx URL param handling messes up non-conventional usernames (previous versions allowed them)
 - [ ] Messages width issues for message entries (especially with embeds)
+- [ ] Gazebo VC audio works only; video and screen sharing issues
 
 ---
 

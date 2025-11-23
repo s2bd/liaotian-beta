@@ -2,7 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-cursor: url('/cursor.cur'), auto;
+
+body {
+ cursor: url('https://mux8.com/assets/image/cursor.cur'), auto;
+}
 
 /* ==========================================
  THEME CSS VARIABLES

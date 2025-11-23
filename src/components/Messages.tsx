@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { supabase, Message, Profile, uploadMedia, MessageReaction } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Send, BadgeCheck, Search, ArrowLeft, X, Paperclip, FileText, Link, CornerUpLeft, Phone, Video, Mic, Play, Pause, Check, CheckCheck, MessageSquare, Users, Smile } from 'lucide-react';
+import { Send, BadgeCheck, Search, ArrowLeft, X, Paperclip, FileText, Link, CornerUpLeft, Phone, Video, Mic, Play, Pause, Check, CheckCheck, MessageSquare, Users, Smile, Image as ImageIcon, Film, Music, Folder } from 'lucide-react';
 import { MessageEmbed } from './MessageEmbed';
 
 // Lazy load components to prevent Circular Dependency ReferenceErrors ("Cannot access 'le' before initialization")
@@ -212,6 +212,37 @@ export const Messages = ({
   const [reactionMenu, setReactionMenu] = useState<{ messageId: string, x: number, y: number, isOutgoing: boolean } | null>(null);
   // NEW: State to control the "Who Reacted" modal
   const [viewingReactionsFor, setViewingReactionsFor] = useState<AppMessage | null>(null);
+
+  // --- MEDIA GALLERY STATE ---
+  const [showMediaGallery, setShowMediaGallery] = useState(false);
+  const [galleryTab, setGalleryTab] = useState<'image' | 'video' | 'audio' | 'document'>('image');
+  const [galleryMedia, setGalleryMedia] = useState<AppMessage[]>([]);
+  const [isGalleryLoading, setIsGalleryLoading] = useState(false);
+
+  const loadGalleryMedia = async () => {
+    if (!user || !selectedUser) return;
+    setIsGalleryLoading(true);
+
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`and(sender_id.eq.${user.id},recipient_id.eq.${selectedUser.id}),and(sender_id.eq.${selectedUser.id},recipient_id.eq.${user.id})`)
+      .not('media_url', 'is', null)
+      .neq('media_url', '')
+      .order('created_at', { ascending: false });
+
+    if (data) {
+        setGalleryMedia(data as AppMessage[]);
+    }
+    setIsGalleryLoading(false);
+  };
+
+  const middleTruncate = (str: string, len: number) => {
+    if (str.length <= len) return str;
+    const start = str.slice(0, Math.floor(len / 2));
+    const end = str.slice(-Math.floor(len / 2));
+    return `${start}...${end}`;
+  };
   
   const { user } = useAuth();
 
@@ -1132,7 +1163,151 @@ export const Messages = ({
         </div>
       )}
 
-      {/* SIDEBAR */}
+      {/* MEDIA GALLERY MODAL */}
+      {showMediaGallery && (
+        <div 
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm p-4"
+            onClick={() => setShowMediaGallery(false)}
+        >
+            <div 
+                className="bg-[rgb(var(--color-surface))] w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl overflow-hidden border border-[rgb(var(--color-border))] flex flex-col"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="p-4 border-b border-[rgb(var(--color-border))] flex justify-between items-center bg-[rgb(var(--color-surface))]">
+                    <h3 className="font-bold text-xl text-[rgb(var(--color-text))]">Shared Media</h3>
+                    <button 
+                        onClick={() => setShowMediaGallery(false)}
+                        className="p-2 rounded-full hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-secondary))]"
+                    >
+                        <X size={24} />
+                    </button>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface))]">
+                    <button 
+                        onClick={() => setGalleryTab('image')}
+                        className={`flex-1 py-3 font-semibold flex items-center justify-center gap-2 transition ${galleryTab === 'image' ? 'text-[rgb(var(--color-accent))] border-b-2 border-[rgb(var(--color-accent))]' : 'text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))]'}`}
+                    >
+                        <ImageIcon size={18} /> Images
+                    </button>
+                    <button 
+                        onClick={() => setGalleryTab('video')}
+                        className={`flex-1 py-3 font-semibold flex items-center justify-center gap-2 transition ${galleryTab === 'video' ? 'text-[rgb(var(--color-accent))] border-b-2 border-[rgb(var(--color-accent))]' : 'text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))]'}`}
+                    >
+                        <Film size={18} /> Videos
+                    </button>
+                    <button 
+                        onClick={() => setGalleryTab('audio')}
+                        className={`flex-1 py-3 font-semibold flex items-center justify-center gap-2 transition ${galleryTab === 'audio' ? 'text-[rgb(var(--color-accent))] border-b-2 border-[rgb(var(--color-accent))]' : 'text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))]'}`}
+                    >
+                        <Music size={18} /> Audio
+                    </button>
+                    <button 
+                        onClick={() => setGalleryTab('document')}
+                        className={`flex-1 py-3 font-semibold flex items-center justify-center gap-2 transition ${galleryTab === 'document' ? 'text-[rgb(var(--color-accent))] border-b-2 border-[rgb(var(--color-accent))]' : 'text-[rgb(var(--color-text-secondary))] hover:bg-[rgb(var(--color-surface-hover))]'}`}
+                    >
+                        <FileIcon size={18} /> Files
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-4 bg-[rgb(var(--color-background))]">
+                    {isGalleryLoading ? (
+                        <div className="flex h-full items-center justify-center text-[rgb(var(--color-text-secondary))]">
+                            Loading media...
+                        </div>
+                    ) : (
+                        <>
+                            {galleryMedia.filter(m => m.media_type === galleryTab).length === 0 ? (
+                                <div className="flex h-full items-center justify-center text-[rgb(var(--color-text-secondary))] flex-col gap-2">
+                                    <Folder size={48} className="opacity-20" />
+                                    <span>No {galleryTab}s found</span>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* GRID VIEW FOR IMAGES AND VIDEOS */}
+                                    {(galleryTab === 'image' || galleryTab === 'video') && (
+                                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-1">
+                                            {galleryMedia.filter(m => m.media_type === galleryTab).map(msg => (
+                                                <div key={msg.id} className="aspect-square relative group bg-[rgb(var(--color-surface))]">
+                                                    {galleryTab === 'image' ? (
+                                                        <a href={msg.media_url!} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
+                                                            <img src={msg.media_url!} className="w-full h-full object-cover hover:opacity-90 transition" alt="Shared" />
+                                                        </a>
+                                                    ) : (
+                                                        <video src={msg.media_url!} className="w-full h-full object-cover" controls />
+                                                    )}
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-end justify-between p-2 pointer-events-none">
+                                                        <span className="text-[10px] text-white">
+                                                            {new Date(msg.created_at).toLocaleDateString()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* LIST VIEW FOR AUDIO */}
+                                    {galleryTab === 'audio' && (
+                                        <div className="space-y-3">
+                                            {galleryMedia.filter(m => m.media_type === galleryTab).map(msg => (
+                                                <div key={msg.id} className="flex items-center gap-3 p-3 bg-[rgb(var(--color-surface))] rounded-xl border border-[rgb(var(--color-border))]">
+                                                    <div className="w-10 h-10 rounded-full bg-[rgba(var(--color-accent),0.1)] flex items-center justify-center flex-shrink-0 text-[rgb(var(--color-accent))]">
+                                                        <Mic size={20} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="text-xs text-[rgb(var(--color-text-secondary))]">
+                                                                {msg.sender_id === user?.id ? 'You' : selectedUser?.display_name} • {new Date(msg.created_at).toLocaleString()}
+                                                            </span>
+                                                        </div>
+                                                        <AudioPlayer src={msg.media_url!} isOutgoing={false} />
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* LIST VIEW FOR FILES */}
+                                    {galleryTab === 'document' && (
+                                        <div className="space-y-2">
+                                            {galleryMedia.filter(m => m.media_type === galleryTab).map(msg => (
+                                                <a 
+                                                    key={msg.id} 
+                                                    href={msg.media_url!} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-3 p-3 bg-[rgb(var(--color-surface))] rounded-xl border border-[rgb(var(--color-border))] hover:bg-[rgb(var(--color-surface-hover))] transition group"
+                                                >
+                                                    <div className="w-10 h-10 rounded-lg bg-[rgba(var(--color-primary),0.1)] flex items-center justify-center flex-shrink-0 text-[rgb(var(--color-primary))]">
+                                                        <FileText size={20} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-medium text-sm text-[rgb(var(--color-text))] truncate">
+                                                            {/* Try to extract filename from URL or show middle truncated URL */}
+                                                            {msg.content || middleTruncate(msg.media_url!.split('/').pop() || 'Unknown File', 30)}
+                                                        </p>
+                                                        <p className="text-xs text-[rgb(var(--color-text-secondary))]">
+                                                            {new Date(msg.created_at).toLocaleDateString()} • {msg.sender_id === user?.id ? 'Sent by you' : `Sent by ${selectedUser?.display_name}`}
+                                                        </p>
+                                                    </div>
+                                                    <div className="p-2 text-[rgb(var(--color-text-secondary))] group-hover:text-[rgb(var(--color-accent))]">
+                                                        <Link size={18} />
+                                                    </div>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
+        </div>
+      )}
       
       {/* SIDEBAR */}
       <div className={`w-full md:w-96 bg-[rgb(var(--color-surface))] border-r border-[rgb(var(--color-border))] flex-shrink-0 flex flex-col transition-transform duration-300 ease-in-out ${showSidebar ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} md:relative fixed inset-y-0 left-0 z-40 md:z-auto`}>
@@ -1263,6 +1438,17 @@ export const Messages = ({
                   title="Start video call"
                 >
                   <Video size={20} />
+                </button>
+                <div className="w-px h-6 bg-[rgb(var(--color-border))] mx-1 self-center"></div>
+                <button
+                  onClick={() => {
+                      setShowMediaGallery(true);
+                      loadGalleryMedia();
+                  }}
+                  className="p-2 rounded-full hover:bg-[rgb(var(--color-surface-hover))] transition text-[rgb(var(--color-text-secondary))]"
+                  title="View Media & Files"
+                >
+                  <Folder size={20} />
                 </button>
               </div>
             </div>

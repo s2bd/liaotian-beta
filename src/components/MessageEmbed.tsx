@@ -50,7 +50,7 @@ export const MessageEmbed = ({ url }: { url: string }) => {
   if (error || !data) return null; // Hide if we can't generate a preview
 
   return (
-    <div className="mt-2 max-w-[90%] sm:max-w-[50%] md:max-w-[65%] rounded-lg border border-[rgb(var(--color-border))] bg-[rgba(var(--color-surface-hover),0.5)] overflow-hidden transition hover:bg-[rgb(var(--color-surface-hover))]">
+    <div className="mt-2 w-full rounded-lg border border-[rgb(var(--color-border))] bg-[rgba(var(--color-surface-hover),0.5)] overflow-hidden transition hover:bg-[rgb(var(--color-surface-hover))]">
       <div className="flex flex-col">
         {/* Site Name / Publisher */}
         <div className="px-3 pt-3 flex items-center gap-2 text-[10px] uppercase font-bold text-[rgb(var(--color-text-secondary))]">

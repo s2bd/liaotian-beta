@@ -41,3 +41,11 @@ DROP CONSTRAINT IF EXISTS message_reactions_message_id_fkey;
 -- 2. (Optional) You can leave it without a FK if you want to support both tables, 
 -- or use a polymorphic approach. For simplicity, we remove the strict check 
 -- so the code can insert Gazebo Message IDs.
+
+
+ALTER TABLE public.message_reactions
+ADD CONSTRAINT message_reactions_message_id_fkey
+FOREIGN KEY (message_id)
+REFERENCES public.messages(id)
+ON DELETE CASCADE;   -- or whatever rule you originally had
+

@@ -47,16 +47,24 @@ const VideoTile = React.memo(({
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
 
-    // Robust stream attachment
+    // Robust stream attachment matching script.js logic
     useEffect(() => {
         const videoEl = videoRef.current;
-        if (videoEl && peer.stream) {
-            videoEl.srcObject = peer.stream;
-            videoEl.play().catch(e => console.warn("Autoplay blocked:", e));
-        }
-    }, [peer.stream]);
+        if (!videoEl) return;
 
-    const hasVideo = peer.stream && peer.stream.getVideoTracks().length > 0 && peer.stream.getVideoTracks()[0].enabled;
+        // Only update if the stream reference actually changed to prevent flickering
+        if (peer.stream && videoEl.srcObject !== peer.stream) {
+            videoEl.srcObject = peer.stream;
+            videoEl.onloadedmetadata = () => {
+                videoEl.play().catch(e => console.warn("Autoplay blocked/pending:", e));
+            };
+        } else if (!peer.stream) {
+            videoEl.srcObject = null;
+        }
+    }, [peer.stream]); // Only re-run if the stream object itself changes
+
+    const hasVideo = peer.stream && peer.stream.getVideoTracks().length > 0;
+    const isVideoEnabled = hasVideo && !peer.isVideoOff;
     const isSpeaking = peer.volume > 15;
 
     return (
@@ -68,27 +76,26 @@ const VideoTile = React.memo(({
             `}
             onDoubleClick={onToggleFocus}
         >
-            {/* Video Feed */}
-            {hasVideo && !peer.isVideoOff ? (
-                <video 
-                    ref={videoRef}
-                    autoPlay 
-                    playsInline 
-                    muted={peer.peerId === 'local'} // Mute self to avoid feedback
-                    className="w-full h-full bg-black object-cover" 
-                />
-            ) : (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-                    <div className={`relative transition-transform duration-150 ${isSpeaking ? 'scale-110' : 'scale-100'}`}>
-                        <img 
-                            src={peer.profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${peer.userId}`} 
-                            className="w-20 h-20 rounded-full shadow-2xl object-cover bg-gray-700 z-10 relative"
-                            alt={peer.userId}
-                        />
-                        {isSpeaking && <div className="absolute -inset-2 rounded-full border-4 border-green-500 opacity-50 animate-ping" />}
-                    </div>
+            {/* Video Feed - ALWAYS RENDERED, visibility toggled via CSS */}
+            <video 
+                ref={videoRef}
+                autoPlay 
+                playsInline 
+                muted={peer.peerId === 'local'} 
+                className={`w-full h-full bg-black object-cover absolute inset-0 z-10 ${isVideoEnabled ? 'opacity-100' : 'opacity-0'}`}
+            />
+
+            {/* Avatar Fallback - Visible when video is hidden */}
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-0">
+                <div className={`relative transition-transform duration-150 ${isSpeaking ? 'scale-110' : 'scale-100'}`}>
+                    <img 
+                        src={peer.profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${peer.userId}`} 
+                        className="w-20 h-20 rounded-full shadow-2xl object-cover bg-gray-700 z-10 relative"
+                        alt={peer.userId}
+                    />
+                    {isSpeaking && <div className="absolute -inset-2 rounded-full border-4 border-green-500 opacity-50 animate-ping" />}
                 </div>
-            )}
+            </div>
 
             {/* Overlay Info */}
             <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center z-20">
@@ -376,20 +383,31 @@ export const GazeboVC: React.FC<GazeboVCProps> = ({
       if (!localStream) return;
       
       if (mediaState.camera) {
-          // Stop Video
-          localStream.getVideoTracks().forEach(t => {
-              t.stop();
-              localStream.removeTrack(t);
-          });
+          // STOP CAMERA
+          localStream.getVideoTracks().forEach(t => t.stop());
+          
+          // Create NEW stream with just audio to update UI
+          const newStream = new MediaStream(localStream.getAudioTracks());
+          setLocalStream(newStream);
+          localStreamRef.current = newStream;
+
           const newState = { ...mediaState, camera: false, screen: false };
           setMediaState(newState);
           broadcastMediaState(newState);
       } else {
-          // Start Video
+          // START CAMERA
           try {
               const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
               const videoTrack = videoStream.getVideoTracks()[0];
-              localStream.addTrack(videoTrack);
+              
+              // Create NEW stream with audio + new video
+              const newStream = new MediaStream([
+                  ...localStream.getAudioTracks(),
+                  videoTrack
+              ]);
+              
+              setLocalStream(newStream);
+              localStreamRef.current = newStream;
               
               // Patch existing connections
               replaceVideoTrack(videoTrack);
@@ -407,37 +425,61 @@ export const GazeboVC: React.FC<GazeboVCProps> = ({
       if (!localStream) return;
 
       if (mediaState.screen) {
-          // Stop Screen -> Revert to Camera if it was on, or just stop video
-          localStream.getVideoTracks().forEach(t => t.stop()); // Stop screen track
-          const newState = { ...mediaState, screen: false, camera: false }; // Simplified logic: turning off screen turns off video
+          // STOP SCREEN SHARE
+          localStream.getVideoTracks().forEach(t => t.stop());
+          
+          // Revert to camera if desired, or just audio. For now, stop video to match logic.
+          // Important: We must create a NEW stream object to force React to re-render the VideoTile
+          const newAudioStream = new MediaStream(localStream.getAudioTracks());
+          
+          setLocalStream(newAudioStream); // Triggers re-render
+          localStreamRef.current = newAudioStream;
+
+          const newState = { ...mediaState, screen: false, camera: false };
           setMediaState(newState);
           broadcastMediaState(newState);
+          
+          // Note: If you want to revert to Camera immediately, you'd call toggleCamera() logic here.
       } else {
+          // START SCREEN SHARE
           try {
               const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
               const screenTrack = displayStream.getVideoTracks()[0];
-              
-              // Auto-handle native stop button
+
+              // Handle native "Stop Sharing" floating button
               screenTrack.onended = () => {
+                  // Recursively call toggle to stop
+                  const currentRef = localStreamRef.current;
+                  if (currentRef) {
+                       const audioTracks = currentRef.getAudioTracks();
+                       const revertStream = new MediaStream(audioTracks);
+                       setLocalStream(revertStream);
+                       localStreamRef.current = revertStream;
+                  }
+                  
                   const newState = { ...mediaState, screen: false, camera: false };
                   setMediaState(newState);
                   broadcastMediaState(newState);
               };
 
-              // Replace current video track
-              const oldTrack = localStream.getVideoTracks()[0];
-              if (oldTrack) {
-                  oldTrack.stop();
-                  localStream.removeTrack(oldTrack);
-              }
-              localStream.addTrack(screenTrack);
+              // Create a NEW stream combining existing audio + new screen video
+              const newStream = new MediaStream([
+                  ...localStream.getAudioTracks(), 
+                  screenTrack
+              ]);
+
+              // Update React State
+              setLocalStream(newStream);
+              localStreamRef.current = newStream;
               
+              // Update Peer Connections
               replaceVideoTrack(screenTrack);
 
               const newState = { ...mediaState, screen: true, camera: false };
               setMediaState(newState);
               broadcastMediaState(newState);
           } catch (e) {
+              console.error(e);
               addToast("Screen sharing cancelled", "info");
           }
       }

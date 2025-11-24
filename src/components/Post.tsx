@@ -335,6 +335,17 @@ export const PostItem: React.FC<PostItemProps> = ({
               <span className="text-[rgb(var(--color-text-secondary))] text-sm">@{post.profiles?.username}</span>
               <span className="text-[rgb(var(--color-text-secondary))] text-sm">· {new Date(post.created_at).toLocaleDateString()} at {formatTime(post.created_at)}</span>
             </div>
+
+            {groupData && (
+                <div 
+                   className="flex items-center gap-2 mt-1 cursor-pointer group w-fit" 
+                   // Note: You might want to pass a handler to PostItem to perform navigation (e.g. setView('groups'))
+                   // For now, this is purely visual as requested.
+                >
+                   <img src={groupData.icon_url || `https://ui-avatars.com/api/?name=${groupData.name}&background=random`} className="w-5 h-5 rounded-md border border-[rgb(var(--color-border))]" alt="Group" />
+                   <span className="text-xs font-bold text-[rgb(var(--color-text-secondary))] group-hover:text-[rgb(var(--color-primary))] transition">{groupData.name}</span>
+                </div>
+            )}
             
             {isEditing ? (
               <div className="mt-2 space-y-2">

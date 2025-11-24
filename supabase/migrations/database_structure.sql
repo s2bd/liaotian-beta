@@ -32,6 +32,42 @@ CREATE TABLE public.follows (
   CONSTRAINT follows_follower_id_fkey FOREIGN KEY (follower_id) REFERENCES public.profiles(id),
   CONSTRAINT follows_following_id_fkey FOREIGN KEY (following_id) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.forum_comments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  post_id uuid,
+  user_id uuid NOT NULL,
+  content text NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT forum_comments_pkey PRIMARY KEY (id),
+  CONSTRAINT forum_comments_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.forum_posts(id),
+  CONSTRAINT forum_comments_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.forum_posts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  forum_id uuid,
+  user_id uuid NOT NULL,
+  title text NOT NULL,
+  content text NOT NULL,
+  media_url text DEFAULT ''::text,
+  media_type text DEFAULT 'image'::text,
+  created_at timestamp with time zone DEFAULT now(),
+  comment_count integer DEFAULT 0,
+  CONSTRAINT forum_posts_pkey PRIMARY KEY (id),
+  CONSTRAINT forum_posts_forum_id_fkey FOREIGN KEY (forum_id) REFERENCES public.forums(id),
+  CONSTRAINT forum_posts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.forums (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  icon_url text DEFAULT ''::text,
+  banner_url text DEFAULT ''::text,
+  tag text NOT NULL CHECK (tag = ANY (ARRAY['Gaming'::text, 'Hobbies'::text, 'Study'::text, 'Trade'::text, 'Reviews'::text, 'Other'::text])),
+  owner_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT forums_pkey PRIMARY KEY (id),
+  CONSTRAINT forums_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id)
+);
 CREATE TABLE public.gazebo_channels (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   gazebo_id uuid NOT NULL,
@@ -104,6 +140,28 @@ CREATE TABLE public.gazebos (
   CONSTRAINT gazebos_pkey PRIMARY KEY (id),
   CONSTRAINT gazebos_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.group_members (
+  group_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role text DEFAULT 'member'::text,
+  joined_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT group_members_pkey PRIMARY KEY (group_id, user_id),
+  CONSTRAINT group_members_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.groups(id),
+  CONSTRAINT group_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.groups (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  icon_url text DEFAULT ''::text,
+  banner_url text DEFAULT ''::text,
+  type text NOT NULL CHECK (type = ANY (ARRAY['public'::text, 'private'::text, 'secret'::text])),
+  tag text NOT NULL CHECK (tag = ANY (ARRAY['Gaming'::text, 'Hobbies'::text, 'Study'::text, 'Trade'::text, 'Reviews'::text, 'Other'::text])),
+  owner_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT groups_pkey PRIMARY KEY (id),
+  CONSTRAINT groups_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id)
+);
 CREATE TABLE public.likes (
   user_id uuid NOT NULL,
   entity_id uuid NOT NULL,
@@ -160,8 +218,10 @@ CREATE TABLE public.posts (
   media_type text DEFAULT 'image'::text,
   comment_count integer DEFAULT 0,
   like_count integer DEFAULT 0,
+  group_id uuid,
   CONSTRAINT posts_pkey PRIMARY KEY (id),
-  CONSTRAINT posts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+  CONSTRAINT posts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT posts_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.groups(id)
 );
 CREATE TABLE public.profiles (
   id uuid NOT NULL,

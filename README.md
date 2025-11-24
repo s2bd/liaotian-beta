@@ -59,8 +59,8 @@ If you just want to create an account on **Liaoverse** (our official deployment)
 - [x] Paste from clipboard to messages
 - [x] Public post sharing via context menu
 - [x] Gazebo joining Welcome page
-- [x] Embed links
-- [ ] Create and manage groups
+- [x] Embed links (in Feed, Messages, Gazebos) and YouTube videos (in Feed)
+- [x] Create and manage groups
 - [ ] Posting long-form content, e.g. blogs
 - [ ] Hashtags
 - [ ] Custom sounds, e.g. notifications, clicks, etc.
@@ -79,6 +79,9 @@ If you just want to create an account on **Liaoverse** (our official deployment)
 - [ ] Current App.tsx URL param handling messes up non-conventional usernames (previous versions allowed them)
 - [ ] Messages width issues for message entries (especially with embeds)
 - [ ] Gazebo VC video and screen sharing issues (local works fine)
+- [ ] Status images not centered properly, and sometimes trimmed in half
+- [ ] Groups need better UI/UX for modification, post flairs in feed, etc.
+- [ ] Forums need better UI/UX and allow media attachments
 
 ---
 

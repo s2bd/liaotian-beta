@@ -358,6 +358,22 @@ export const Messages = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // --- SCROLL TO REPLY FUNCTION ---
+  const scrollToMessage = (messageId: string) => {
+    const element = document.getElementById(`msg-${messageId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Optional: Add a visual flash effect
+      element.classList.add('ring-2', 'ring-[rgb(var(--color-primary))]', 'ring-offset-2');
+      setTimeout(() => {
+        element.classList.remove('ring-2', 'ring-[rgb(var(--color-primary))]', 'ring-offset-2');
+      }, 1000);
+    } else {
+      // Optional: Handle case where message is not loaded (pagination)
+      console.log('Message not currently loaded in view');
+    }
+  };
+
   const goToProfile = async (profileId: string) => {
     const { data } = await supabase
       .from('profiles')
@@ -1477,13 +1493,14 @@ export const Messages = ({
               {messages.map((msg) => {
                 const isOnlyAudio = msg.media_type === 'audio' && !msg.content.trim();
                 const messageWidthClass = isOnlyAudio 
-                    ? 'max-w-[90%] sm:max-w-[60%] md:max-w-[70%]'
-                    : 'max-w-[90%] sm:max-w-[50%] md:max-w-[65%]';
+                    ? 'max-w-[70%] sm:max-w-[50%] md:max-w-[65%] text-sm'
+                    : 'max-w-[70%] sm:max-w-[45%] md:max-w-[50%] text-sm';
 
                 return (
                 <div
                   key={msg.id}
-                  className={`flex items-center gap-2 group ${msg.sender_id === user!.id ? 'justify-end' : 'justify-start'}`}
+                  id={`msg-${msg.id}`}
+                  className={`flex items-center gap-2 group transition-all duration-300 ${msg.sender_id === user!.id ? 'justify-end' : 'justify-start'}`}
                 >
                   {msg.sender_id === user!.id && (
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
@@ -1519,7 +1536,13 @@ export const Messages = ({
                       const isReplyToSelf = repliedToMsg.sender_id === user!.id;
                       
                       return (
-                        <div className={`p-2 rounded-lg mb-2 ${
+                        <div 
+                            // --- CLICK HANDLER ---
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                scrollToMessage(msg.reply_to_id!);
+                            }}
+                            className={`p-2 rounded-lg mb-2 cursor-pointer hover:opacity-80 transition ${ // Added cursor-pointer & hover
                           msg.sender_id === user!.id
                             ? 'bg-[rgba(var(--color-surface),0.2)]' 
                             : 'bg-[rgb(var(--color-surface-hover))]' 

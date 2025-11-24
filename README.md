@@ -2,7 +2,7 @@
 easy-to-host social platforms for everyone
 
 ```
-Current version: 1.0.9E
+Current version: 1.0.9F
 ```
 
 ### What makes LiaoTian (LT) so special from already existing social media/networking platforms?
@@ -61,6 +61,8 @@ If you just want to create an account on **Liaoverse** (our official deployment)
 - [x] Gazebo joining Welcome page
 - [x] Embed links (in Feed, Messages, Gazebos) and YouTube videos (in Feed)
 - [x] Create and manage groups
+- [x] Custom ringtone for calling in Messages
+- [x] Special event/party mode (activated via App.tsx)
 - [ ] Posting long-form content, e.g. blogs
 - [ ] Hashtags
 - [ ] Custom sounds, e.g. notifications, clicks, etc.

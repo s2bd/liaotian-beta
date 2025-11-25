@@ -2,7 +2,7 @@
 easy-to-host social platforms for everyone
 
 ```
-Current version: 1.0.9F
+Current version: 1.0.9G
 ```
 
 ### What makes LiaoTian (LT) so special from already existing social media/networking platforms?
@@ -82,7 +82,8 @@ If you just want to create an account on **Liaoverse** (our official deployment)
 - [ ] Status images not centered properly, and sometimes trimmed in half
 - [ ] Groups need better UI/UX for modification, post flairs in feed, etc.
 - [ ] Forums need better UI/UX and allow media attachments
-
+- [ ] Message editing/deleting issues (locally works, not on DB)
+      
 ---
 
 ## ⚖️ Legal information
